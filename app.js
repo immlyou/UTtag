@@ -2521,12 +2521,12 @@ function sendExternalNotification(message) {
   }
 }
 
-// 增強 showToast 以同時送外部通知（僅 danger 等級）
-const _origShowToast = showToast;
-showToast = function(message, type, duration) {
-  _origShowToast(message, type, duration);
+// 增強 pushAlert 以同時送外部通知（僅 danger 等級）
+const _origPushAlert = pushAlert;
+pushAlert = function(icon, message, type) {
+  _origPushAlert(icon, message, type);
   if (type === "danger" && (notifConfig.webhookUrl || notifConfig.lineToken || notifConfig.telegramToken)) {
-    sendExternalNotification(message);
+    sendExternalNotification(`${icon} ${message}`);
   }
 };
 
@@ -2878,7 +2878,8 @@ function updateExcursionTimers() {
       }
 
       if (timer.totalMinutes >= 30) {
-        showToast(`⚠️ ${tagAliases[tag.mac] || tag.mac} 溫度逸脫超過 30 分鐘，批次可能需作廢`, "danger");
+        pushAlert("⚠️", `${tagAliases[tag.mac] || tag.mac} 溫度逸脫超過 30 分鐘，批次可能需作廢`, "danger");
+        playAlertSound(600, 2);
       }
     } else {
       timer.inExcursion = false;
