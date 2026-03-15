@@ -712,8 +712,11 @@ async function queryHistory() {
     status.className = "status error"; status.textContent = "開始時間必須早於結束時間"; return;
   }
 
+  // 暫停自動刷新，避免佔用 API 額度
+  stopAutoRefresh();
+
   status.className = "status info";
-  status.innerHTML = '<span class="spinner"></span>查詢中...';
+  status.innerHTML = '<span class="spinner"></span>查詢中（已暫停自動刷新）...';
   clearHistory();
   historyRawData = [];
 
@@ -724,26 +727,15 @@ async function queryHistory() {
 
     try {
       const result = await apiCall("history", { mac, startTime, endTime });
-      const tagData = result[0];
-      if (!tagData || !tagData.data || tagData.data.length === 0) continue;
+      const tagResult = Array.isArray(result) ? result[0] : null;
+      if (!tagResult || !tagResult.data || tagResult.data.length === 0) continue;
 
-      historyRawData.push({ mac, data: tagData.data });
-      drawHistory(tagData.data, color, mac);
-      totalPoints += tagData.data.length;
-
-      // 多 Tag 之間等冷卻
-      if (i < macs.length - 1) {
-        status.innerHTML = `<span class="spinner"></span>等待冷卻中 (${i + 1}/${macs.length})...`;
-        await delay(30000);
-      }
+      historyRawData.push({ mac, data: tagResult.data });
+      drawHistory(tagResult.data, color, mac);
+      totalPoints += tagResult.data.length;
     } catch (err) {
-      if (err.retryAfter) {
-        status.innerHTML = `<span class="spinner"></span>冷卻中，${err.retryAfter}s 後重試...`;
-        await delay(err.retryAfter * 1000);
-        i--; // retry same mac
-      } else {
-        console.error(`history error for ${mac}:`, err);
-      }
+      console.error(`history error for ${mac}:`, err);
+      status.innerHTML = `<span class="spinner"></span>查詢 ${mac} 失敗，繼續下一個...`;
     }
   }
 
@@ -761,6 +753,9 @@ async function queryHistory() {
 
   status.className = "status success";
   status.textContent = `共 ${totalPoints} 筆紀錄 (${macs.length} 個 Tag)`;
+
+  // 查詢完成，恢復自動刷新
+  startAutoRefresh();
 }
 
 function drawHistory(data, color, mac) {
