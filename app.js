@@ -3860,11 +3860,53 @@ function saveBrandTheme() {
   const primary = document.getElementById("brand-primary").value;
   const accent = document.getElementById("brand-accent").value;
   const logoUrl = document.getElementById("brand-logo-url").value.trim();
-  brandTheme = { company, primary, accent, logoUrl };
+  const logoImage = brandTheme?.logoImage || "";
+  brandTheme = { company, primary, accent, logoUrl, logoImage };
   localStorage.setItem("utfind_brand_theme", JSON.stringify(brandTheme));
   applyBrandTheme();
   showToast("品牌主題已套用", "success");
 }
+
+function handleLogoUpload(event) {
+  const file = event.target.files?.[0] || event.dataTransfer?.files?.[0];
+  if (!file || !file.type.startsWith("image/")) return;
+  if (file.size > 2 * 1024 * 1024) { showToast("圖片大小不能超過 2MB", "error"); return; }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const base64 = e.target.result;
+    if (!brandTheme) brandTheme = {};
+    brandTheme.logoImage = base64;
+    updateLogoPreview(base64);
+    showToast("Logo 已上傳，點擊「套用主題」儲存", "info");
+  };
+  reader.readAsDataURL(file);
+}
+
+function updateLogoPreview(src) {
+  const preview = document.getElementById("brand-logo-preview");
+  if (!preview) return;
+  if (src) {
+    preview.innerHTML = `<img src="${src}" alt="Logo" /><span style="font-size:10px;color:var(--text-muted);cursor:pointer;" onclick="event.stopPropagation();clearLogoImage()">移除圖片</span>`;
+  } else {
+    preview.innerHTML = `<span style="font-size:24px;color:var(--text-muted);">+</span><span style="font-size:10px;color:var(--text-muted);">點擊或拖曳圖片上傳</span>`;
+  }
+}
+
+function clearLogoImage() {
+  if (brandTheme) { brandTheme.logoImage = ""; }
+  updateLogoPreview("");
+  const fileInput = document.getElementById("brand-logo-file");
+  if (fileInput) fileInput.value = "";
+}
+
+// Logo 拖曳上傳
+document.addEventListener("DOMContentLoaded", () => {
+  const dropZone = document.getElementById("brand-logo-drop");
+  if (!dropZone) return;
+  dropZone.addEventListener("dragover", (e) => { e.preventDefault(); dropZone.classList.add("drag-over"); });
+  dropZone.addEventListener("dragleave", () => { dropZone.classList.remove("drag-over"); });
+  dropZone.addEventListener("drop", (e) => { e.preventDefault(); dropZone.classList.remove("drag-over"); handleLogoUpload(e); });
+});
 
 function resetBrandTheme() {
   brandTheme = null;
@@ -3872,8 +3914,11 @@ function resetBrandTheme() {
   document.documentElement.style.removeProperty("--accent");
   document.documentElement.style.removeProperty("--accent-hover");
   const logo = document.querySelector(".nav-logo");
-  if (logo) { logo.textContent = "UT"; logo.style.background = ""; }
+  if (logo) { logo.innerHTML = "UT"; logo.style.background = ""; }
   document.title = "UTFind — IoT Tag Dashboard";
+  updateLogoPreview("");
+  const fileInput = document.getElementById("brand-logo-file");
+  if (fileInput) fileInput.value = "";
   showToast("已重置為預設主題", "info");
 }
 
@@ -3884,8 +3929,12 @@ function applyBrandTheme() {
     document.documentElement.style.setProperty("--accent-hover", brandTheme.accent || brandTheme.primary);
   }
   const logo = document.querySelector(".nav-logo");
-  if (logo && brandTheme.company) {
-    logo.textContent = brandTheme.company.slice(0, 2).toUpperCase();
+  if (logo) {
+    if (brandTheme.logoImage) {
+      logo.innerHTML = `<img src="${brandTheme.logoImage}" alt="Logo" />`;
+    } else if (brandTheme.company) {
+      logo.innerHTML = brandTheme.company.slice(0, 2).toUpperCase();
+    }
   }
   if (brandTheme.company) {
     document.title = `${brandTheme.company} — IoT Dashboard`;
@@ -3899,6 +3948,7 @@ function loadBrandThemeUI() {
   if (el("brand-primary")) el("brand-primary").value = brandTheme.primary || "#3b82f6";
   if (el("brand-accent")) el("brand-accent").value = brandTheme.accent || "#8b5cf6";
   if (el("brand-logo-url")) el("brand-logo-url").value = brandTheme.logoUrl || "";
+  if (brandTheme.logoImage) updateLogoPreview(brandTheme.logoImage);
 }
 
 // 頁面載入時套用品牌主題
