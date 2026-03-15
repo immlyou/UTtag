@@ -5,7 +5,9 @@ const PLAN_LIMITS = {
   Professional: { rateLimit: 15, maxTags: 500 },
   Enterprise:   { rateLimit: null, maxTags: null },
 };
-const AUTO_REFRESH_INTERVAL = 60;
+const AUTO_REFRESH_INTERVAL = 120; // 加長到 2 分鐘，減少 API 呼叫
+const API_COOLDOWN = 31000; // 31 秒冷卻（Basic 方案 30 秒 + 1 秒緩衝）
+let lastApiCallTime = 0; // 上次 API 呼叫的時間戳
 const TEMP_MIN = 2;
 const TEMP_MAX = 8;
 const TRACK_COLORS = ["#8b5cf6", "#f59e0b", "#06b6d4", "#ec4899", "#10b981", "#f97316", "#6366f1", "#14b8a6"];
@@ -143,8 +145,25 @@ function createStartEndIcon(type) {
   });
 }
 
-// ========== API 呼叫 ==========
+// ========== API 呼叫（含冷卻管控） ==========
+async function waitForCooldown() {
+  const elapsed = Date.now() - lastApiCallTime;
+  if (elapsed < API_COOLDOWN) {
+    const waitMs = API_COOLDOWN - elapsed;
+    const waitSec = Math.ceil(waitMs / 1000);
+    const status = document.getElementById("key-status");
+    if (status) {
+      status.className = "status info";
+      status.innerHTML = `<span class="spinner"></span>API 冷卻中，${waitSec} 秒後繼續...`;
+    }
+    await delay(waitMs);
+  }
+}
+
 async function apiCall(endpoint, body) {
+  await waitForCooldown();
+  lastApiCallTime = Date.now();
+
   const resp = await fetch(`${API_BASE}/${endpoint}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -261,7 +280,8 @@ async function connect() {
     }
 
     status.className = "status success";
-    status.textContent = `已連線，共 ${allTags.length} 個 Tag（含 ${manualTags.length} 個手動）`;
+    const manualCount = manualTags.length;
+    status.textContent = `已取得 ${allTags.length} 個 Tag${manualCount > 0 ? `（含 ${manualCount} 個手動）` : ""}，正在取得位置...`;
 
     renderPlanInfo(key, allTags);
     document.getElementById("plan-section").style.display = "block";
@@ -275,6 +295,7 @@ async function connect() {
 
     addEvent("connect", `已連線至 API，共 ${allTags.length} 個 Tag`);
 
+    // 等待冷卻後再呼叫 /latest（/all 和 /latest 共用 30 秒冷卻）
     await fetchLatest();
     startAutoRefresh();
   } catch (err) {
@@ -308,22 +329,13 @@ async function fetchLatest() {
     updateDashboard();
     checkAlerts();
     checkGeofenceAlerts();
-  } catch (err) {
-    if (err.retryAfter) {
-      const status = document.getElementById("key-status");
-      status.className = "status info";
-      status.innerHTML = `<span class="spinner"></span>API 冷卻中，${err.retryAfter} 秒後重試...`;
-      await delay(err.retryAfter * 1000);
-      try {
-        latestData = await apiCall("latest", { macs });
-        injectFakeSensorData(latestData);
-        renderTagList(); updateMarkers(); updateDashboard(); checkAlerts(); checkGeofenceAlerts();
-        status.className = "status success";
-        status.textContent = `已連線，共 ${allTags.length} 個 Tag`;
-      } catch (e) { console.error("retry error:", e); }
-    } else {
-      console.error("fetchLatest error:", err);
+    const status = document.getElementById("key-status");
+    if (status) {
+      status.className = "status success";
+      status.textContent = `已連線，共 ${allTags.length} 個 Tag · 上次更新 ${new Date().toLocaleTimeString()}`;
     }
+  } catch (err) {
+    console.error("fetchLatest error:", err);
   }
 }
 
@@ -467,11 +479,7 @@ async function refreshAll() {
   const btn = document.querySelector("#tags-section .btn-icon");
   if (btn) btn.style.animation = "spin 0.6s linear infinite";
   try {
-    allTags = await apiCall("all", {});
-    if (!Array.isArray(allTags)) allTags = [];
-    mergeManualTags();
-    renderPlanInfo(apiKey, allTags);
-    populateHistoryCheckboxes();
+    // 不重新呼叫 /all（Tag 清單很少變動），只刷新位置
     await fetchLatest();
     startAutoRefresh();
   } catch (e) { console.error(e); }
