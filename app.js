@@ -150,13 +150,27 @@ async function waitForCooldown() {
   const elapsed = Date.now() - lastApiCallTime;
   if (elapsed < API_COOLDOWN) {
     const waitMs = API_COOLDOWN - elapsed;
-    const waitSec = Math.ceil(waitMs / 1000);
-    const status = document.getElementById("key-status");
-    if (status) {
-      status.className = "status info";
-      status.innerHTML = `<span class="spinner"></span>API 冷卻中，${waitSec} 秒後繼續...`;
-    }
+    // 用倒數計時更新 UI，讓使用者知道在等待
+    const updateCooldownUI = (sec) => {
+      const msg = `<span class="spinner"></span>API 冷卻中，${sec} 秒後繼續...`;
+      // 更新所有可能可見的狀態欄
+      ["key-status", "history-status"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el && el.closest(".panel")?.classList.contains("active")) {
+          el.className = "status info";
+          el.innerHTML = msg;
+        }
+      });
+    };
+    let remaining = Math.ceil(waitMs / 1000);
+    updateCooldownUI(remaining);
+    // 每秒更新倒數
+    const countdownTimer = setInterval(() => {
+      remaining--;
+      if (remaining > 0) updateCooldownUI(remaining);
+    }, 1000);
     await delay(waitMs);
+    clearInterval(countdownTimer);
   }
 }
 
