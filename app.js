@@ -331,7 +331,8 @@ function injectFakeSensorData(data) {
 async function fetchLatest() {
   const macs = allTags.map((t) => t.mac);
   try {
-    latestData = await apiCall("latest", { macs });
+    const result = await apiCall("latest", { macs });
+    latestData = Array.isArray(result) ? result : [];
     injectFakeSensorData(latestData);
     renderTagList();
     updateMarkers();
