@@ -3942,12 +3942,13 @@ function applyBrandTheme() {
   const banner = document.getElementById("brand-banner");
   if (banner) {
     if (brandTheme.logoImage || brandTheme.company) {
-      let html = "";
-      if (brandTheme.logoImage) html += `<img src="${brandTheme.logoImage}" alt="Banner" />`;
-      if (brandTheme.company) html += `<span class="brand-banner-name">${brandTheme.company}</span>`;
-      banner.innerHTML = html;
-      banner.className = "brand-banner" + (brandTheme.logoImage ? "" : " no-image");
-      banner.style.display = brandTheme.logoImage ? "block" : "flex";
+      if (brandTheme.logoImage) {
+        banner.innerHTML = `<img src="${brandTheme.logoImage}" alt="Banner" />`;
+        banner.className = "brand-banner";
+        banner.style.display = "block";
+      } else {
+        banner.style.display = "none";
+      }
     } else {
       banner.style.display = "none";
     }
