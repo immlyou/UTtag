@@ -151,11 +151,35 @@ body {
   margin-bottom: 20px;
 }
 
+.panel-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .panel-header h2 {
   font-size: 18px;
   font-weight: 700;
   color: var(--text);
   letter-spacing: -0.3px;
+}
+
+.brand-header-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.brand-header-logo img {
+  height: 32px;
+  max-width: 120px;
+  object-fit: contain;
+  border-radius: 6px;
+}
+.brand-header-logo .brand-header-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
 }
 
 .header-actions { display: flex; gap: 8px; align-items: center; }

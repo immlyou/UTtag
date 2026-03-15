@@ -3915,6 +3915,8 @@ function resetBrandTheme() {
   document.documentElement.style.removeProperty("--accent-hover");
   const logo = document.querySelector(".nav-logo");
   if (logo) { logo.innerHTML = "UT"; logo.style.background = ""; }
+  const headerLogo = document.getElementById("brand-header-logo");
+  if (headerLogo) { headerLogo.innerHTML = ""; headerLogo.style.display = "none"; }
   document.title = "UTFind — IoT Tag Dashboard";
   updateLogoPreview("");
   const fileInput = document.getElementById("brand-logo-file");
@@ -3934,6 +3936,19 @@ function applyBrandTheme() {
       logo.innerHTML = `<img src="${brandTheme.logoImage}" alt="Logo" />`;
     } else if (brandTheme.company) {
       logo.innerHTML = brandTheme.company.slice(0, 2).toUpperCase();
+    }
+  }
+  // 更新面板 header 的品牌 logo
+  const headerLogo = document.getElementById("brand-header-logo");
+  if (headerLogo) {
+    if (brandTheme.logoImage || brandTheme.company) {
+      let html = "";
+      if (brandTheme.logoImage) html += `<img src="${brandTheme.logoImage}" alt="Logo" />`;
+      if (brandTheme.company) html += `<span class="brand-header-name">${brandTheme.company}</span>`;
+      headerLogo.innerHTML = html;
+      headerLogo.style.display = "flex";
+    } else {
+      headerLogo.style.display = "none";
     }
   }
   if (brandTheme.company) {
