@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="zh-TW" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UTFind — IoT Tag Dashboard</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#3b82f6">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="toast-container"></div>
+
+  <!-- 左側導航 -->
+  <nav id="nav-rail">
+    <div class="nav-logo">UT</div>
+    <div class="nav-items">
+      <button class="nav-btn active" onclick="switchPanel('dashboard')" title="總覽 (1)" id="nav-dashboard">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+      </button>
+      <button class="nav-btn" onclick="switchPanel('tags')" title="裝置 (2)" id="nav-tags">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 1H7c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-2zm0 18H7V5h10v14z"/></svg>
+      </button>
+      <button class="nav-btn" onclick="switchPanel('history')" title="軌跡 (3)" id="nav-history">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+      </button>
+      <button class="nav-btn" onclick="switchPanel('geofence')" title="圍欄 (4)" id="nav-geofence">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+      </button>
+      <button class="nav-btn" onclick="switchPanel('events')" title="事件 (5)" id="nav-events">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13zM6 20V4h5v7h7v9H6z"/></svg>
+      </button>
+      <button class="nav-btn" onclick="switchPanel('reports')" title="報表 (6)" id="nav-reports">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>
+      </button>
+      <button class="nav-btn" onclick="switchPanel('groups')" title="群組 (7)" id="nav-groups">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12.75c1.63 0 3.07.39 4.24.9 1.08.48 1.76 1.56 1.76 2.73V18H6v-1.61c0-1.18.68-2.26 1.76-2.73 1.17-.52 2.61-.91 4.24-.91zM4 13c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm1.13 1.1C4.76 14.04 4.39 14 4 14c-.99 0-1.93.21-2.78.58A2.01 2.01 0 000 16.43V18h4.5v-1.61c0-.83.23-1.61.63-2.29zM20 13c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm4 3.43c0-.81-.48-1.53-1.22-1.85A6.95 6.95 0 0020 14c-.39 0-.76.04-1.13.1.4.68.63 1.46.63 2.29V18H24v-1.57zM12 6c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3z"/></svg>
+      </button>
+      <button class="nav-btn" onclick="switchPanel('settings')" title="設定 (8)" id="nav-settings">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+      </button>
+      <button class="nav-btn" onclick="switchPanel('coldchain')" title="冷鏈 (9)" id="nav-coldchain">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M22 11h-4.17l3.24-3.24-1.41-1.42L15 11h-2V9l4.66-4.66-1.42-1.41L13 6.17V2h-2v4.17L7.76 2.93 6.34 4.34 11 9v2H9L4.34 6.34 2.93 7.76 6.17 11H2v2h4.17l-3.24 3.24 1.41 1.42L9 13h2v2l-4.66 4.66 1.42 1.41L11 17.83V22h2v-4.17l3.24 3.24 1.42-1.41L13 15v-2h2l4.66 4.66 1.41-1.42L17.83 13H22z"/></svg>
+      </button>
+      <button class="nav-btn" onclick="switchPanel('logistics')" title="物流 (0)" id="nav-logistics">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM6 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-9l1.96 2.5H17V9.5h2.5zm-1.5 9c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
+      </button>
+    </div>
+    <div class="nav-bottom">
+      <button class="nav-btn" onclick="toggleNotifSound()" id="btn-sound" title="通知音效">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+      </button>
+      <button class="nav-btn" onclick="toggleLang()" id="btn-lang" title="語言">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12.87 15.07l-2.54-2.51.03-.03A17.52 17.52 0 0014.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/></svg>
+      </button>
+      <button class="nav-btn" onclick="toggleDarkMode()" id="btn-theme" title="主題">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-2.98 0-5.4-2.42-5.4-5.4 0-1.81.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/></svg>
+      </button>
+    </div>
+  </nav>
+
+  <!-- 側邊面板 -->
+  <aside id="sidebar">
+    <!-- 總覽 -->
+    <div class="panel active" id="panel-dashboard">
+      <div class="panel-header">
+        <h2 data-i18n="dashboard">總覽 Dashboard</h2>
+        <span id="auto-refresh-badge" class="refresh-badge" style="display:none;"></span>
+      </div>
+      <div class="connect-bar">
+        <input type="text" id="api-key" placeholder="API Key" value="P7K5LQ9K" />
+        <button id="btn-connect" onclick="connect()">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+          <span data-i18n="connect">連線</span>
+        </button>
+      </div>
+      <div id="key-status" class="status"></div>
+
+      <!-- 骨架屏 -->
+      <div id="kpi-skeleton" class="kpi-grid" style="display:none;">
+        <div class="kpi-card skeleton-card"><div class="skeleton-line w60"></div><div class="skeleton-line w40"></div></div>
+        <div class="kpi-card skeleton-card"><div class="skeleton-line w60"></div><div class="skeleton-line w40"></div></div>
+        <div class="kpi-card skeleton-card"><div class="skeleton-line w60"></div><div class="skeleton-line w40"></div></div>
+        <div class="kpi-card skeleton-card"><div class="skeleton-line w60"></div><div class="skeleton-line w40"></div></div>
+      </div>
+
+      <!-- KPI -->
+      <div class="kpi-grid" id="kpi-grid" style="display:none;">
+        <div class="kpi-card kpi-blue">
+          <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg></div>
+          <div class="kpi-data"><div class="kpi-value" id="dash-online">0</div><div class="kpi-label" data-i18n="online">在線裝置</div></div>
+        </div>
+        <div class="kpi-card kpi-red">
+          <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg></div>
+          <div class="kpi-data"><div class="kpi-value" id="dash-sos">0</div><div class="kpi-label">SOS</div></div>
+        </div>
+        <div class="kpi-card kpi-amber">
+          <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.67 4H14V2h-4v2H8.33C7.6 4 7 4.6 7 5.33v15.34C7 21.4 7.6 22 8.33 22h7.34c.73 0 1.33-.6 1.33-1.33V5.33C17 4.6 16.4 4 15.67 4z"/></svg></div>
+          <div class="kpi-data"><div class="kpi-value" id="dash-lowbat">0</div><div class="kpi-label" data-i18n="lowbat">低電量</div></div>
+        </div>
+        <div class="kpi-card kpi-purple">
+          <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 13V5c0-1.66-1.34-3-3-3S9 3.34 9 5v8c-1.21.91-2 2.37-2 4 0 2.76 2.24 5 5 5s5-2.24 5-5c0-1.63-.79-3.09-2-4z"/></svg></div>
+          <div class="kpi-data"><div class="kpi-value" id="dash-temp">0</div><div class="kpi-label" data-i18n="tempAlert">溫度異常</div></div>
+        </div>
+        <div class="kpi-card kpi-cyan kpi-wide">
+          <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 1H7c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-2zm0 18H7V5h10v14z"/></svg></div>
+          <div class="kpi-data"><div class="kpi-value" id="dash-total">0</div><div class="kpi-label" data-i18n="total">裝置總數</div></div>
+        </div>
+      </div>
+
+      <div class="info-card" id="plan-section" style="display:none;">
+        <div class="info-card-header"><span data-i18n="planInfo">方案資訊</span><button class="btn-toggle" onclick="toggleSection('plan-content')">⌃</button></div>
+        <div id="plan-content" class="info-card-body"></div>
+      </div>
+    </div>
+
+    <!-- 裝置 -->
+    <div class="panel" id="panel-tags">
+      <div class="panel-header">
+        <h2 data-i18n="devices">裝置列表</h2>
+        <button class="btn-icon-round" onclick="refreshAll()" title="重新整理">↻</button>
+      </div>
+      <input type="text" id="tag-search" placeholder="搜尋 MAC / 名稱..." class="search-input" oninput="renderTagList()" />
+      <div class="filter-bar" id="filter-bar">
+        <button class="btn-chip active" onclick="filterTags('all', this)" data-i18n="all">全部</button>
+        <button class="btn-chip" onclick="filterTags('normal', this)" data-i18n="normal">正常</button>
+        <button class="btn-chip" onclick="filterTags('sos', this)">SOS</button>
+        <button class="btn-chip" onclick="filterTags('lowbat', this)" data-i18n="lowbat">低電量</button>
+        <button class="btn-chip" onclick="filterTags('tempalert', this)" data-i18n="tempAlert">溫度異常</button>
+      </div>
+      <div id="tag-list" class="tag-list"></div>
+    </div>
+
+    <!-- Tag 詳情 -->
+    <div class="panel" id="panel-detail">
+      <div class="panel-header">
+        <button class="btn-back" onclick="switchPanel('tags')">← <span data-i18n="back">返回</span></button>
+        <button class="btn-ghost-sm" onclick="shareTag()" data-i18n="share">分享</button>
+      </div>
+      <div id="detail-content"></div>
+    </div>
+
+    <!-- 歷史 -->
+    <div class="panel" id="panel-history">
+      <div class="panel-header"><h2 data-i18n="history">歷史軌跡</h2></div>
+      <div class="form-group">
+        <label data-i18n="selectTag">選擇 Tag</label>
+        <div id="history-mac-checkboxes" class="mac-checkboxes"></div>
+      </div>
+      <div class="quick-range">
+        <button class="btn-chip active" onclick="setQuickRange(1, this)">1h</button>
+        <button class="btn-chip" onclick="setQuickRange(6, this)">6h</button>
+        <button class="btn-chip" onclick="setQuickRange(24, this)">24h</button>
+        <button class="btn-chip" onclick="setQuickRange(72, this)">3d</button>
+        <button class="btn-chip" onclick="setQuickRange(168, this)">7d</button>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex:1;"><label data-i18n="start">開始</label><input type="datetime-local" id="history-start" /></div>
+        <div class="form-group" style="flex:1;"><label data-i18n="end">結束</label><input type="datetime-local" id="history-end" /></div>
+      </div>
+      <button class="btn-accent" onclick="queryHistory()" data-i18n="queryTrack">查詢軌跡</button>
+      <div class="btn-row">
+        <button class="btn-ghost" onclick="clearHistory()" data-i18n="clear">清除</button>
+        <button class="btn-ghost" onclick="exportHistory('csv')">CSV</button>
+        <button class="btn-ghost" onclick="exportHistory('json')">JSON</button>
+        <button class="btn-ghost" onclick="printReport()" data-i18n="print">列印</button>
+      </div>
+      <div id="history-status" class="status"></div>
+      <div id="playback-controls" class="playback-bar" style="display:none;">
+        <button class="btn-icon-round btn-sm" id="btn-play" onclick="togglePlayback()">▶</button>
+        <input type="range" id="playback-slider" min="0" max="100" value="0" oninput="seekPlayback(this.value)" />
+        <select id="playback-speed" onchange="setPlaybackSpeed(this.value)">
+          <option value="500">1×</option><option value="250">2×</option><option value="100" selected>5×</option><option value="50">10×</option>
+        </select>
+        <span id="playback-time" class="playback-time"></span>
+      </div>
+      <div id="history-stats" class="stats-card" style="display:none;"></div>
+    </div>
+
+    <!-- 圍欄 -->
+    <div class="panel" id="panel-geofence">
+      <div class="panel-header"><h2 data-i18n="geofence">地理圍欄</h2></div>
+      <div class="form-group">
+        <label data-i18n="pickLocation">點擊地圖設定中心</label>
+        <button class="btn-accent" id="btn-geofence-pick" onclick="startGeofencePick()" data-i18n="pickPos">選取位置</button>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex:1;"><label data-i18n="radius">半徑 (m)</label><input type="number" id="geofence-radius" value="500" min="50" max="50000" /></div>
+        <div class="form-group" style="flex:1;"><label data-i18n="name">名稱</label><input type="text" id="geofence-name" placeholder="例如：公司" /></div>
+      </div>
+      <button class="btn-accent" onclick="saveGeofence()" data-i18n="saveGeofence">儲存圍欄</button>
+      <div id="geofence-list" class="geofence-list"></div>
+    </div>
+
+    <!-- 事件日誌 -->
+    <div class="panel" id="panel-events">
+      <div class="panel-header">
+        <h2 data-i18n="eventLog">事件日誌</h2>
+        <button class="btn-ghost-sm" onclick="clearEventLog()" data-i18n="clearAll">清除全部</button>
+      </div>
+      <div id="event-list" class="event-list">
+        <div class="empty-state" data-i18n="noEvents">尚無事件</div>
+      </div>
+    </div>
+
+    <!-- 報表分析 -->
+    <div class="panel" id="panel-reports">
+      <div class="panel-header"><h2 data-i18n="reports">報表與分析</h2></div>
+
+      <!-- 健康評分 -->
+      <div class="report-section">
+        <div class="section-title" data-i18n="healthScore">裝置健康評分</div>
+        <div id="health-score-list" class="tag-list"></div>
+      </div>
+
+      <!-- 電量預測 -->
+      <div class="report-section">
+        <div class="section-title" data-i18n="batteryPrediction">電量預測</div>
+        <div id="battery-prediction-list" class="tag-list"></div>
+      </div>
+
+      <!-- 異常偵測 -->
+      <div class="report-section">
+        <div class="section-title" data-i18n="anomalyDetection">異常行為偵測</div>
+        <div id="anomaly-list" class="tag-list">
+          <div class="empty-state">需要歷史資料進行分析</div>
+        </div>
+      </div>
+
+      <!-- 每日報表 -->
+      <div class="report-section">
+        <div class="section-title" data-i18n="dailyReport">使用報表</div>
+        <div class="btn-row" style="margin-bottom:10px;">
+          <button class="btn-ghost" onclick="generateReport('daily')">日報</button>
+          <button class="btn-ghost" onclick="generateReport('weekly')">週報</button>
+          <button class="btn-ghost" onclick="generateReport('monthly')">月報</button>
+        </div>
+        <div id="report-output" class="report-output"></div>
+      </div>
+
+      <!-- SLA 監控 -->
+      <div class="report-section">
+        <div class="section-title" data-i18n="slaMonitor">SLA 監控</div>
+        <div class="form-row" style="margin-bottom:8px;">
+          <div class="form-group" style="flex:1;">
+            <label>目標回報間隔 (分鐘)</label>
+            <input type="number" id="sla-target" value="60" min="1" max="1440" />
+          </div>
+        </div>
+        <button class="btn-accent" onclick="renderSLA()">計算 SLA</button>
+        <div id="sla-output" class="report-output" style="margin-top:10px;"></div>
+      </div>
+
+      <!-- 停留點分析 -->
+      <div class="report-section">
+        <div class="section-title" data-i18n="dwellAnalysis">停留點分析</div>
+        <div class="form-row" style="margin-bottom:8px;">
+          <div class="form-group" style="flex:1;">
+            <label>最短停留 (分鐘)</label>
+            <input type="number" id="dwell-minutes" value="10" min="1" max="120" />
+          </div>
+        </div>
+        <button class="btn-accent" onclick="analyzeDwellPoints()">分析停留點</button>
+        <div id="dwell-output" class="report-output" style="margin-top:10px;"></div>
+      </div>
+    </div>
+
+    <!-- 群組與資產 -->
+    <div class="panel" id="panel-groups">
+      <div class="panel-header"><h2 data-i18n="groupsAssets">群組與資產</h2></div>
+
+      <!-- Tag 分組 -->
+      <div class="report-section">
+        <div class="section-title" data-i18n="tagGroups">Tag 分組</div>
+        <div class="form-row" style="margin-bottom:8px;">
+          <div class="form-group" style="flex:2;"><input type="text" id="group-name" placeholder="群組名稱（如：車隊）" /></div>
+          <div class="form-group" style="flex:1;">
+            <input type="color" id="group-color" value="#3b82f6" style="height:36px;padding:2px;" />
+          </div>
+        </div>
+        <div id="group-tag-checkboxes" class="mac-checkboxes" style="margin-bottom:8px;"></div>
+        <button class="btn-accent" onclick="saveGroup()">建立群組</button>
+        <div id="group-list" class="geofence-list" style="margin-top:10px;"></div>
+      </div>
+
+      <!-- 任務指派 -->
+      <div class="report-section">
+        <div class="section-title" data-i18n="taskAssign">任務指派</div>
+        <div class="form-group"><label>任務名稱</label><input type="text" id="task-name" placeholder="例如：每日巡檢" /></div>
+        <div class="form-group"><label>指派 Tag</label><select id="task-tag-select"></select></div>
+        <div class="form-group"><label>截止日期</label><input type="datetime-local" id="task-deadline" /></div>
+        <button class="btn-accent" onclick="saveTask()">建立任務</button>
+        <div id="task-list" class="geofence-list" style="margin-top:10px;"></div>
+      </div>
+
+      <!-- 資產生命週期 -->
+      <div class="report-section">
+        <div class="section-title" data-i18n="assetLifecycle">資產生命週期</div>
+        <div id="asset-list" class="tag-list"></div>
+      </div>
+    </div>
+
+    <!-- 設定與整合 -->
+    <div class="panel" id="panel-settings">
+      <div class="panel-header"><h2 data-i18n="settingsIntegration">設定與整合</h2></div>
+
+      <!-- 手動 Tag -->
+      <div class="report-section">
+        <div class="section-title">手動新增 Tag</div>
+        <p style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">加入不在帳戶中的 Tag MAC 地址，連線後一併追蹤</p>
+        <div class="form-row">
+          <div class="form-group" style="flex:3;"><input type="text" id="manual-tag-input" placeholder="例如：C2:85:85:68:38:CA" style="text-transform:uppercase;" /></div>
+          <div class="form-group" style="flex:1;"><button class="btn-accent" onclick="addManualTag()" style="width:100%;height:36px;">新增</button></div>
+        </div>
+        <div id="manual-tag-list" class="geofence-list"></div>
+      </div>
+
+      <!-- 角色權限 -->
+      <div class="report-section">
+        <div class="section-title">角色權限</div>
+        <div class="form-group">
+          <label>當前角色</label>
+          <select id="user-role" onchange="saveRole(this.value)">
+            <option value="admin">管理員 (Admin)</option>
+            <option value="operator">操作者 (Operator)</option>
+            <option value="viewer">檢視者 (Viewer)</option>
+          </select>
+        </div>
+        <div class="role-desc" id="role-desc"></div>
+      </div>
+
+      <!-- 多渠道通知 -->
+      <div class="report-section">
+        <div class="section-title" data-i18n="notifChannels">多渠道通知</div>
+        <div class="form-group"><label>LINE Notify Token</label><input type="text" id="line-token" placeholder="輸入 LINE Notify Token" /></div>
+        <div class="form-group"><label>Telegram Bot Token</label><input type="text" id="telegram-token" placeholder="Bot Token" /></div>
+        <div class="form-group"><label>Telegram Chat ID</label><input type="text" id="telegram-chat" placeholder="Chat ID" /></div>
+        <div class="form-group"><label>Webhook URL</label><input type="text" id="webhook-url" placeholder="https://..." /></div>
+        <button class="btn-accent" onclick="saveNotifConfig()">儲存通知設定</button>
+        <button class="btn-ghost" style="width:100%;margin-top:6px;" onclick="testNotifChannels()">測試通知</button>
+      </div>
+
+      <!-- 排程通知 -->
+      <div class="report-section">
+        <div class="section-title" data-i18n="scheduledNotif">排程通知</div>
+        <div class="form-group">
+          <label>定時摘要</label>
+          <select id="schedule-interval" onchange="saveSchedule()">
+            <option value="0">關閉</option>
+            <option value="3600">每小時</option>
+            <option value="21600">每 6 小時</option>
+            <option value="86400">每天</option>
+          </select>
+        </div>
+        <div id="schedule-status" class="status"></div>
+      </div>
+
+      <!-- 第三方整合 -->
+      <div class="report-section">
+        <div class="section-title">第三方整合</div>
+        <button class="btn-ghost" style="width:100%;margin-bottom:6px;" onclick="exportToGoogleSheets()">匯出至 Google Sheets</button>
+        <div class="form-group"><label>IFTTT Webhook Key</label><input type="text" id="ifttt-key" placeholder="IFTTT Webhook Key" /></div>
+        <button class="btn-ghost" style="width:100%;" onclick="saveIntegrationConfig()">儲存整合設定</button>
+      </div>
+
+      <!-- API Webhook -->
+      <div class="report-section">
+        <div class="section-title">API Webhook</div>
+        <div class="form-group"><label>事件回呼 URL</label><input type="text" id="api-webhook-url" placeholder="https://your-server.com/webhook" /></div>
+        <div class="form-group">
+          <label>觸發事件</label>
+          <div class="webhook-events">
+            <label class="mac-checkbox-item"><input type="checkbox" id="wh-sos" checked /> SOS 求救</label>
+            <label class="mac-checkbox-item"><input type="checkbox" id="wh-lowbat" checked /> 低電量</label>
+            <label class="mac-checkbox-item"><input type="checkbox" id="wh-temp" checked /> 溫度異常</label>
+            <label class="mac-checkbox-item"><input type="checkbox" id="wh-geofence" checked /> 圍欄離開</label>
+          </div>
+        </div>
+        <button class="btn-accent" onclick="saveWebhookConfig()">儲存 Webhook</button>
+      </div>
+
+      <!-- OTA 韌體更新 -->
+      <div class="report-section">
+        <div class="section-title">OTA 韌體更新</div>
+        <div id="ota-list" class="tag-list"></div>
+      </div>
+
+      <!-- E-Ink 標籤 -->
+      <div class="report-section">
+        <div class="section-title">E-Ink 標籤顯示</div>
+        <div class="form-group"><label>選擇 Tag</label><select id="eink-tag-select"></select></div>
+        <div class="form-group"><label>顯示文字 (最多 20 字)</label><input type="text" id="eink-text" maxlength="20" placeholder="輸入要顯示的文字" /></div>
+        <button class="btn-accent" onclick="sendEinkUpdate()">更新標籤內容</button>
+        <div id="eink-status" class="status"></div>
+      </div>
+
+      <!-- 稽核日誌 -->
+      <div class="report-section">
+        <div class="section-title" data-i18n="auditLog">操作稽核日誌</div>
+        <div id="audit-log-list" class="event-list"></div>
+      </div>
+
+      <!-- 版本歷程 -->
+      <div class="report-section">
+        <div class="section-title">版本資訊</div>
+        <div style="text-align:center;margin-bottom:12px;">
+          <div style="font-size:28px;font-weight:800;color:var(--accent);">v3.0.0</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">UTFind IoT Dashboard</div>
+        </div>
+        <div id="version-history" class="event-list" style="max-height:400px;overflow-y:auto;"></div>
+      </div>
+    </div>
+
+    <!-- 冷鏈管理 -->
+    <div class="panel" id="panel-coldchain">
+      <div class="panel-header"><h2 data-i18n="coldchain">冷鏈管理</h2></div>
+
+      <div class="report-section">
+        <div class="section-title">GDP/GSP 合規報告</div>
+        <div class="form-group"><label>選擇 Tag</label><select id="gdp-tag-select"></select></div>
+        <button class="btn-accent" onclick="generateGDPReport()">產出合規報告</button>
+      </div>
+
+      <div class="report-section">
+        <div class="section-title">溫度逸脫計時器</div>
+        <div id="excursion-list" class="tag-list"><div class="empty-state">連線後顯示</div></div>
+      </div>
+
+      <div class="report-section">
+        <div class="section-title">批號綁定</div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1;"><label>Tag</label><select id="batch-tag-select"></select></div>
+          <div class="form-group" style="flex:1;"><label>批號</label><input type="text" id="batch-number" placeholder="LOT-2026-001" /></div>
+        </div>
+        <div class="form-group"><label>效期</label><input type="date" id="batch-expiry" /></div>
+        <button class="btn-accent" onclick="saveBatchBinding()">綁定批號</button>
+        <div id="batch-list" class="geofence-list" style="margin-top:10px;"></div>
+      </div>
+
+      <div class="report-section">
+        <div class="section-title">交接簽收鏈</div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1;"><label>Tag</label><select id="handover-tag-select"></select></div>
+          <div class="form-group" style="flex:1;"><label>簽收人</label><input type="text" id="handover-person" placeholder="姓名" /></div>
+        </div>
+        <button class="btn-accent" onclick="recordHandover()">記錄交接</button>
+        <div id="handover-list" class="event-list" style="margin-top:10px;"></div>
+      </div>
+
+      <div class="report-section">
+        <div class="section-title">多段溫層設定</div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1;"><label>Tag</label><select id="tempzone-tag-select"></select></div>
+          <div class="form-group" style="flex:1;">
+            <label>溫層</label>
+            <select id="tempzone-type">
+              <option value="cold">冷藏 (2-8°C)</option>
+              <option value="frozen">冷凍 (-25~-15°C)</option>
+              <option value="ambient">常溫 (15-25°C)</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn-accent" onclick="saveTempZone()">設定溫層</button>
+        <div id="tempzone-list" class="geofence-list" style="margin-top:10px;"></div>
+      </div>
+
+      <div class="report-section">
+        <div class="section-title">HACCP 風險矩陣</div>
+        <div id="haccp-matrix" class="report-output"><div class="empty-state">連線後顯示</div></div>
+      </div>
+
+      <div class="report-section">
+        <div class="section-title">疫苗效期倒數</div>
+        <div id="expiry-countdown-list" class="tag-list"><div class="empty-state">請先綁定批號</div></div>
+      </div>
+    </div>
+
+    <!-- 物流追蹤 -->
+    <div class="panel" id="panel-logistics">
+      <div class="panel-header"><h2 data-i18n="logistics">物流追蹤</h2></div>
+
+      <div class="report-section">
+        <div class="section-title">籠車週轉率</div>
+        <div id="turnover-list" class="tag-list"><div class="empty-state">連線後顯示</div></div>
+      </div>
+
+      <div class="report-section">
+        <div class="section-title">門市滯留預警</div>
+        <div class="form-group"><label>滯留閾值 (小時)</label><input type="number" id="dwell-threshold-hours" value="4" min="1" max="72" /></div>
+        <button class="btn-accent" onclick="checkStoreDwell()">檢查滯留</button>
+        <div id="store-dwell-list" class="tag-list" style="margin-top:10px;"></div>
+      </div>
+
+      <div class="report-section">
+        <div class="section-title">路線偏離偵測</div>
+        <div class="form-group"><label>偏離容許距離 (m)</label><input type="number" id="route-deviation-m" value="500" min="100" max="5000" /></div>
+        <button class="btn-accent" onclick="checkRouteDeviation()">檢測偏離</button>
+        <div id="route-deviation-list" class="tag-list" style="margin-top:10px;"></div>
+      </div>
+
+      <div class="report-section">
+        <div class="section-title">裝載率估算</div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1;"><label>Tag</label><select id="loading-tag-select"></select></div>
+          <div class="form-group" style="flex:1;"><label>訂單數</label><input type="number" id="loading-orders" value="0" min="0" /></div>
+        </div>
+        <div class="form-group"><label>籠車容量 (件)</label><input type="number" id="loading-capacity" value="200" min="1" /></div>
+        <button class="btn-accent" onclick="calcLoadingRate()">計算裝載率</button>
+        <div id="loading-result" class="status" style="margin-top:6px;"></div>
+      </div>
+
+      <div class="report-section">
+        <div class="section-title">到貨 ETA 預測</div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1;"><label>Tag</label><select id="eta-tag-select"></select></div>
+          <div class="form-group" style="flex:1;">
+            <label>目的地</label>
+            <button class="btn-ghost" onclick="pickETADest()" id="btn-eta-pick" style="width:100%;text-align:left;">點擊地圖選取</button>
+          </div>
+        </div>
+        <div id="eta-result" class="status"></div>
+      </div>
+
+      <div class="report-section">
+        <div class="section-title">籠車資產盤點</div>
+        <button class="btn-accent" onclick="inventoryCount()">執行盤點</button>
+        <div id="inventory-result" class="report-output" style="margin-top:10px;"></div>
+      </div>
+
+      <div class="report-section">
+        <div class="section-title">調度大屏看板</div>
+        <button class="btn-accent" onclick="openDispatchBoard()">開啟大屏模式</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 地圖 -->
+  <main id="map"></main>
+
+  <!-- 地圖工具 -->
+  <div class="map-toolbar">
+    <button class="toolbar-btn" onclick="centerAllTags()" data-tooltip="全覽 — 顯示所有裝置位置"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 3l2.3 2.3-2.89 2.87 1.42 1.42L18.7 6.7 21 9V3h-6zM3 9l2.3-2.3 2.87 2.89 1.42-1.42L6.7 5.3 9 3H3v6zm6 12l-2.3-2.3 2.89-2.87-1.42-1.42L5.3 17.3 3 15v6h6zm12-6l-2.3 2.3-2.87-2.89-1.42 1.42 2.89 2.87L15 21h6v-6z"/></svg></button>
+    <button class="toolbar-btn" onclick="toggleFullscreen()" data-tooltip="全螢幕 (F) — 地圖全螢幕顯示"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg></button>
+    <div class="toolbar-divider"></div>
+    <button class="toolbar-btn" id="btn-heatmap" onclick="toggleHeatmap()" data-tooltip="熱力圖 — 以熱度顯示裝置密度分布"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12.9a2.1 2.1 0 110-4.2 2.1 2.1 0 010 4.2zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z"/></svg></button>
+    <button class="toolbar-btn" id="btn-cluster" onclick="toggleClustering()" data-tooltip="群集 — 將鄰近裝置合併為群組標記"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 20h20v-4H2v4zm2-3h2v2H4v-2zM2 4v4h20V4H2zm4 3H4V5h2v2zm-4 7h20v-4H2v4zm2-3h2v2H4v-2z"/></svg></button>
+    <button class="toolbar-btn" id="btn-measure" onclick="toggleMeasure()" data-tooltip="測量 (M) — 點擊地圖測量兩點距離"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 6H3c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 10H3V8h2v4h2V8h2v4h2V8h2v4h2V8h2v4h2V8h2v4z"/></svg></button>
+    <button class="toolbar-btn" id="btn-geocode" onclick="toggleClickGeocode()" data-tooltip="地址查詢 — 點擊地圖反查所在地址"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg></button>
+    <button class="toolbar-btn" id="btn-floorplan" onclick="document.getElementById('floorplan-input').click()" data-tooltip="室內平面圖 — 上傳建築圖覆蓋於地圖上"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/></svg></button>
+  </div>
+  <input type="file" id="floorplan-input" accept="image/*" style="display:none;" onchange="loadFloorPlan(event)" />
+
+  <div id="measure-info" class="measure-float" style="display:none;">
+    <span id="measure-text"></span>
+    <button onclick="clearMeasure()" class="measure-clear">✕</button>
+  </div>
+
+  <div class="layer-switcher">
+    <button class="layer-btn active" onclick="switchLayer('street', this)">街道</button>
+    <button class="layer-btn" onclick="switchLayer('satellite', this)">衛星</button>
+    <button class="layer-btn" onclick="switchLayer('topo', this)">地形</button>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
