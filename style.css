@@ -151,12 +151,6 @@ body {
   margin-bottom: 20px;
 }
 
-.panel-header-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
 .panel-header h2 {
   font-size: 18px;
   font-weight: 700;
@@ -164,22 +158,32 @@ body {
   letter-spacing: -0.3px;
 }
 
-.brand-header-logo {
+.brand-banner {
+  width: 100%;
+  padding: 16px 20px;
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, var(--accent, #3b82f6), var(--accent-hover, #8b5cf6));
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 14px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+  min-height: 64px;
 }
-.brand-header-logo img {
-  height: 32px;
-  max-width: 120px;
+.brand-banner img {
+  height: 44px;
+  max-width: 160px;
   object-fit: contain;
-  border-radius: 6px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.15);
+  padding: 4px 8px;
 }
-.brand-header-logo .brand-header-name {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text);
-  white-space: nowrap;
+.brand-banner .brand-banner-name {
+  font-size: 20px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 0.5px;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 
 .header-actions { display: flex; gap: 8px; align-items: center; }
