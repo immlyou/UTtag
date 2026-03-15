@@ -15,6 +15,16 @@
   <div id="offline-banner" class="offline-banner">目前為離線模式 — 顯示快取資料</div>
   <div id="toast-container"></div>
 
+  <!-- 浮動告警面板 -->
+  <div id="alert-panel" class="alert-panel" style="display:none;">
+    <div class="alert-panel-header">
+      <span class="alert-panel-title">告警通知</span>
+      <span id="alert-panel-count" class="alert-panel-count">0</span>
+      <button class="alert-panel-close" onclick="dismissAlertPanel()">&times;</button>
+    </div>
+    <div id="alert-panel-list" class="alert-panel-list"></div>
+  </div>
+
   <!-- 左側導航 -->
   <nav id="nav-rail">
     <div class="nav-logo">UT</div>

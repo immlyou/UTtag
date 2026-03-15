@@ -522,24 +522,68 @@ function checkAlerts() {
     const alias = tagAliases[tag.mac] || tag.mac;
     if (tag.status === "sos" && !lastNotifiedSos.has(tag.mac)) {
       lastNotifiedSos.add(tag.mac);
-      showToast(`🚨 ${alias} 發出 SOS 求救！`, "danger");
+      pushAlert("🚨", `${alias} 發出 SOS 求救！`, "danger");
       playAlertSound(800, 3);
     }
     if (tag.lastBatteryLevel != null && tag.lastBatteryLevel <= 20 && !lastNotifiedLowBat.has(tag.mac)) {
       lastNotifiedLowBat.add(tag.mac);
-      showToast(`🔋 ${alias} 電量不足 (${tag.lastBatteryLevel}%)`, "warning");
+      pushAlert("🔋", `${alias} 電量不足 (${tag.lastBatteryLevel}%)`, "warning");
     }
     // 溫度警示
     if (tag.temperature != null && (tag.temperature < TEMP_MIN || tag.temperature > TEMP_MAX) && !lastNotifiedTemp.has(tag.mac)) {
       lastNotifiedTemp.add(tag.mac);
       const dir = tag.temperature < TEMP_MIN ? "過低" : "過高";
-      showToast(`🌡️ ${alias} 溫度${dir}！(${tag.temperature}°C，範圍 ${TEMP_MIN}~${TEMP_MAX}°C)`, "danger");
+      pushAlert("🌡️", `${alias} 溫度${dir}！(${tag.temperature}°C，範圍 ${TEMP_MIN}~${TEMP_MAX}°C)`, "danger");
       playAlertSound(600, 2);
     }
     if (tag.status !== "sos") lastNotifiedSos.delete(tag.mac);
     if (tag.lastBatteryLevel > 20) lastNotifiedLowBat.delete(tag.mac);
     if (tag.temperature != null && tag.temperature >= TEMP_MIN && tag.temperature <= TEMP_MAX) lastNotifiedTemp.delete(tag.mac);
   });
+}
+
+// ---------- 浮動告警面板 ----------
+let alertPanelItems = [];
+
+function pushAlert(icon, message, type = "danger") {
+  showToast(`${icon} ${message}`, type);
+  const item = { id: Date.now() + Math.random(), icon, message, type, time: new Date() };
+  alertPanelItems.unshift(item);
+  if (alertPanelItems.length > 50) alertPanelItems.length = 50;
+  renderAlertPanel();
+}
+
+function renderAlertPanel() {
+  const panel = document.getElementById("alert-panel");
+  const list = document.getElementById("alert-panel-list");
+  const count = document.getElementById("alert-panel-count");
+  if (!panel || !list) return;
+  if (alertPanelItems.length === 0) { panel.style.display = "none"; return; }
+  panel.style.display = "flex";
+  count.textContent = alertPanelItems.length;
+  list.innerHTML = alertPanelItems.map(a => {
+    const t = a.time.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const cls = a.type === "warning" ? " warning" : "";
+    return `<div class="alert-panel-item${cls}">
+      <span class="alert-icon">${a.icon}</span>
+      <div class="alert-body">
+        <div class="alert-msg">${a.message}</div>
+        <div class="alert-time">${t}</div>
+      </div>
+      <button class="alert-dismiss" onclick="dismissAlertItem(${a.id})" title="關閉">&times;</button>
+    </div>`;
+  }).join("");
+}
+
+function dismissAlertItem(id) {
+  alertPanelItems = alertPanelItems.filter(a => a.id !== id);
+  renderAlertPanel();
+}
+
+function dismissAlertPanel() {
+  alertPanelItems = [];
+  const panel = document.getElementById("alert-panel");
+  if (panel) panel.style.display = "none";
 }
 
 function showToast(message, type = "success", duration = 5000) {
@@ -1249,7 +1293,7 @@ function checkGeofenceAlerts() {
 
       if (!inside && !geofenceAlertSent.has(key)) {
         geofenceAlertSent.add(key);
-        showToast(`📍 ${alias} 離開圍欄「${gf.name}」`, "warning");
+        pushAlert("📍", `${alias} 離開圍欄「${gf.name}」`, "warning");
       }
       if (inside) geofenceAlertSent.delete(key);
     });
@@ -3920,16 +3964,22 @@ function checkCondition(tag, cond, threshold) {
   }
 }
 
+const ruleAlertSent = new Set();
 function evaluateAlertRules() {
   alertRules.filter(r => r.enabled).forEach(rule => {
     latestData.forEach(tag => {
       const a = checkCondition(tag, rule.condA, rule.threshold);
       const b = rule.condB ? checkCondition(tag, rule.condB, rule.threshold) : false;
       const triggered = rule.condB ? (rule.logic === "and" ? a && b : a || b) : a;
-      if (triggered) {
+      const key = `${rule.id}_${tag.mac}`;
+      if (triggered && !ruleAlertSent.has(key)) {
+        ruleAlertSent.add(key);
         const alias = tagAliases[tag.mac] || tag.mac;
         addEvent("rule", `規則「${rule.name}」觸發: ${alias}`);
+        pushAlert("⚠️", `規則「${rule.name}」觸發: ${alias}`, "danger");
+        playAlertSound(700, 2);
       }
+      if (!triggered) ruleAlertSent.delete(key);
     });
   });
 }
