@@ -160,7 +160,7 @@ async function waitForCooldown() {
   }
 }
 
-async function apiCall(endpoint, body) {
+async function apiCall(endpoint, body, _retryCount = 0) {
   await waitForCooldown();
   lastApiCallTime = Date.now();
 
@@ -174,11 +174,20 @@ async function apiCall(endpoint, body) {
   // 代理可能不轉發原始 HTTP 狀態碼，所以也檢查 body 裡的 code
   const isError = !resp.ok || (data.code && data.code !== 200);
   if (isError) {
-    const msg = data.result?.message || data.message || `錯誤 ${data.code || resp.status}`;
-    const err = new Error(msg);
     const retryAfter = data.result?.retryAfter;
-    if (retryAfter) err.retryAfter = retryAfter;
-    throw err;
+    // 429 自動等待後重試（最多重試 2 次）
+    if (retryAfter && _retryCount < 2) {
+      const status = document.getElementById("key-status");
+      if (status) {
+        status.className = "status info";
+        status.innerHTML = `<span class="spinner"></span>API 冷卻中，${retryAfter} 秒後自動重試...`;
+      }
+      await delay(retryAfter * 1000 + 1000);
+      lastApiCallTime = Date.now() - API_COOLDOWN; // 重置冷卻計時
+      return apiCall(endpoint, body, _retryCount + 1);
+    }
+    const msg = data.result?.message || data.message || `錯誤 ${data.code || resp.status}`;
+    throw new Error(msg);
   }
   return data.result;
 }
