@@ -3943,10 +3943,11 @@ function applyBrandTheme() {
   if (banner) {
     if (brandTheme.logoImage || brandTheme.company) {
       let html = "";
-      if (brandTheme.logoImage) html += `<img src="${brandTheme.logoImage}" alt="Logo" />`;
+      if (brandTheme.logoImage) html += `<img src="${brandTheme.logoImage}" alt="Banner" />`;
       if (brandTheme.company) html += `<span class="brand-banner-name">${brandTheme.company}</span>`;
       banner.innerHTML = html;
-      banner.style.display = "flex";
+      banner.className = "brand-banner" + (brandTheme.logoImage ? "" : " no-image");
+      banner.style.display = brandTheme.logoImage ? "block" : "flex";
     } else {
       banner.style.display = "none";
     }
