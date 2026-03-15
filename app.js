@@ -546,7 +546,6 @@ function checkAlerts() {
 let alertPanelItems = [];
 
 function pushAlert(icon, message, type = "danger") {
-  showToast(`${icon} ${message}`, type);
   const item = { id: Date.now() + Math.random(), icon, message, type, time: new Date() };
   alertPanelItems.unshift(item);
   if (alertPanelItems.length > 50) alertPanelItems.length = 50;
