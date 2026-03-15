@@ -586,6 +586,18 @@ function dismissAlertPanel() {
   if (panel) panel.style.display = "none";
 }
 
+function triggerTestAlerts() {
+  pushAlert("🚨", "Tag-A3 (輪椅 #7) 發出 SOS 求救！", "danger");
+  playAlertSound(800, 3);
+  setTimeout(() => {
+    pushAlert("🌡️", "Tag-B1 (冷藏櫃 #2) 溫度過高！(12.3°C，範圍 2~8°C)", "danger");
+    playAlertSound(600, 2);
+  }, 1500);
+  setTimeout(() => {
+    pushAlert("📍", "Tag-C5 (配送車 #3) 離開圍欄「台北倉庫」", "warning");
+  }, 3000);
+}
+
 function showToast(message, type = "success", duration = 5000) {
   const container = document.getElementById("toast-container");
   const toast = document.createElement("div");
