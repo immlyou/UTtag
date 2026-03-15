@@ -15,9 +15,20 @@
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
       ]
+    },
+    {
+      "source": "/server.js",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex" }
+      ]
     }
   ],
+  "redirects": [
+    { "source": "/server.js", "destination": "/", "statusCode": 302 },
+    { "source": "/package.json", "destination": "/", "statusCode": 302 },
+    { "source": "/package-lock.json", "destination": "/", "statusCode": 302 },
+    { "source": "/.gitignore", "destination": "/", "statusCode": 302 }
+  ],
   "cleanUrls": true,
-  "trailingSlash": false,
-  "ignoreCommand": "exit 0"
+  "trailingSlash": false
 }
