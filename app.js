@@ -1,4 +1,80 @@
-// ========== 設定 ==========
+// ╔══════════════════════════════════════════════════════════════════╗
+// ║  UTFind IoT Tag Dashboard — app.js  v4.1.0                     ║
+// ╠══════════════════════════════════════════════════════════════════╣
+// ║  功能模組索引：                                                  ║
+// ║                                                                 ║
+// ║  [A] 核心基礎 ─────────────────────────────────────────         ║
+// ║    A1. 全域設定與常數                                            ║
+// ║    A2. 地圖初始化與圖層                                          ║
+// ║    A3. Marker 圖示                                              ║
+// ║    A4. API 呼叫（含冷卻管控）                                     ║
+// ║    A5. 連線與資料取得                                            ║
+// ║    A6. 自動刷新與篩選                                            ║
+// ║                                                                 ║
+// ║  [B] 儀表板與視覺化 ─────────────────────────────────           ║
+// ║    B1. KPI 儀表板與骨架屏                                        ║
+// ║    B2. Tag 清單渲染與命名                                        ║
+// ║    B3. 地圖 Markers 更新                                        ║
+// ║    B4. 熱力圖、群集                                              ║
+// ║    B5. 面板切換、深色模式                                         ║
+// ║                                                                 ║
+// ║  [C] 歷史軌跡與分析 ─────────────────────────────────           ║
+// ║    C1. 歷史軌跡查詢（多 Tag 比對）                                ║
+// ║    C2. 軌跡回放與速度色彩                                        ║
+// ║    C3. 停留點分析                                                ║
+// ║    C4. 匯出（CSV/GeoJSON）                                      ║
+// ║                                                                 ║
+// ║  [D] 地理圍欄與地圖工具 ─────────────────────────────           ║
+// ║    D1. 圓形 / 多邊形圍欄                                        ║
+// ║    D2. 距離測量、地址反查                                        ║
+// ║    D3. 室內平面圖、POI 標註                                      ║
+// ║                                                                 ║
+// ║  [E] 告警與通知 ─────────────────────────────────────           ║
+// ║    E1. 即時通知（SOS / 低電量 / 溫度）                            ║
+// ║    E2. 告警規則引擎                                              ║
+// ║    E3. 多渠道通知（LINE / Telegram / Webhook）                   ║
+// ║    E4. 排程通知                                                  ║
+// ║                                                                 ║
+// ║  [F] 裝置管理 ───────────────────────────────────────           ║
+// ║    F1. 手動 Tag 管理                                            ║
+// ║    F2. Tag 分組與群組                                            ║
+// ║    F3. OTA 韌體更新、E-Ink 標籤                                  ║
+// ║    F4. 裝置健康評分、電量預測                                     ║
+// ║    F5. 資產生命週期                                              ║
+// ║                                                                 ║
+// ║  [G] 報表與合規 ─────────────────────────────────────           ║
+// ║    G1. 使用報表、列印報告                                        ║
+// ║    G2. 數據比對報告                                              ║
+// ║    G3. SLA 監控                                                  ║
+// ║    G4. 碳足跡計算                                                ║
+// ║                                                                 ║
+// ║  [H] 帳戶與整合 ─────────────────────────────────────           ║
+// ║    H1. 多帳戶切換                                                ║
+// ║    H2. 角色權限                                                  ║
+// ║    H3. 第三方整合、API Webhook                                   ║
+// ║    H4. 批次 CSV 匯入                                            ║
+// ║    H5. 稽核日誌                                                  ║
+// ║                                                                 ║
+// ║  [I] 外觀與品牌 ─────────────────────────────────────           ║
+// ║    I1. 品牌白標主題 / Logo 上傳                                   ║
+// ║    I2. 產業情境 Demo（8 產業）                                    ║
+// ║    I3. 多語系 (i18n)                                             ║
+// ║                                                                 ║
+// ║  [J] 產業模組 ───────────────────────────────────────           ║
+// ║    J1. 冷鏈管理（GDP/GSP、溫度逸脫、批號、HACCP）                  ║
+// ║    J2. 物流追蹤（週轉率、滯留、偏離、ETA、盤點）                    ║
+// ║                                                                 ║
+// ║  [K] 進階功能 ───────────────────────────────────────           ║
+// ║    K1. AI 行為預測                                               ║
+// ║    K2. 即時共享連結                                              ║
+// ║    K3. 離線模式 / PWA                                            ║
+// ║    K4. 自訂 KPI 排列（拖曳）                                     ║
+// ║    K5. 語音播報、QR Code 配對                                    ║
+// ╚══════════════════════════════════════════════════════════════════╝
+
+// ================================================================
+//  [A1] 全域設定與常數
+// ================================================================
 const API_BASE = "/api/v1/tags";
 const PLAN_LIMITS = {
   Basic:        { rateLimit: 30, maxTags: 100 },
@@ -73,7 +149,9 @@ let lastNotifiedSos = new Set();
 let lastNotifiedLowBat = new Set();
 let lastNotifiedTemp = new Set();
 
-// ========== 地圖初始化 ==========
+// ================================================================
+//  [A2] 地圖初始化與圖層
+// ================================================================
 const map = L.map("map", { zoomControl: false }).setView([23.5, 121], 7);
 L.control.zoom({ position: "bottomleft" }).addTo(map);
 
@@ -124,7 +202,9 @@ map.on("click", (e) => {
   }
 });
 
-// ========== Marker 圖示 ==========
+// ================================================================
+//  [A3] Marker 圖示
+// ================================================================
 function createIcon(status) {
   const color = status === "sos" ? "#ef4444" : "#3b82f6";
   return L.divIcon({
@@ -151,7 +231,9 @@ function createStartEndIcon(type) {
   });
 }
 
-// ========== API 呼叫（含冷卻管控） ==========
+// ================================================================
+//  [A4] API 呼叫（含冷卻管控）
+// ================================================================
 async function waitForCooldown() {
   const elapsed = Date.now() - lastApiCallTime;
   if (elapsed < API_COOLDOWN) {
@@ -212,7 +294,9 @@ async function apiCall(endpoint, body, _retryCount = 0) {
   return data.result;
 }
 
-// ========== 手動 Tag 管理 ==========
+// ================================================================
+//  [F1] 手動 Tag 管理
+// ================================================================
 function mergeManualTags() {
   const existingMacs = new Set(allTags.map(t => t.mac));
   manualTags.forEach(mac => {
@@ -281,7 +365,9 @@ function renderManualTagList() {
   }).join("");
 }
 
-// ========== 連線 ==========
+// ================================================================
+//  [A5] 連線與資料取得
+// ================================================================
 async function connect() {
   const input = document.getElementById("api-key");
   const status = document.getElementById("key-status");
@@ -337,7 +423,7 @@ async function connect() {
   }
 }
 
-// ========== 模擬溫溼度（API 尚未提供，先用假資料） ==========
+// ---------- 模擬溫溼度（API 尚未提供） ----------
 function injectFakeSensorData(data) {
   data.forEach((tag) => {
     // 溫度：大部分在 2~8 度之間，偶爾超出範圍模擬異常
@@ -349,7 +435,7 @@ function injectFakeSensorData(data) {
   });
 }
 
-// ========== 取得最新定位 ==========
+// ---------- 取得最新定位 ----------
 async function fetchLatest() {
   const macs = allTags.map((t) => t.mac);
   try {
@@ -373,7 +459,9 @@ async function fetchLatest() {
   }
 }
 
-// ========== 儀表板 ==========
+// ================================================================
+//  [B1] KPI 儀表板與骨架屏
+// ================================================================
 function updateDashboard() {
   const total = latestData.length;
   const sos = latestData.filter((t) => t.status === "sos").length;
@@ -402,7 +490,7 @@ function updateDashboard() {
   });
 }
 
-// ========== KPI 動畫 ==========
+// ---------- KPI 動畫 ----------
 function animateValue(id, target) {
   const el = document.getElementById(id);
   if (!el) return;
@@ -420,13 +508,15 @@ function animateValue(id, target) {
   }, stepTime);
 }
 
-// ========== 骨架屏 ==========
+// ---------- 骨架屏 ----------
 function showSkeleton(show) {
   const skel = document.getElementById("kpi-skeleton");
   if (skel) skel.style.display = show ? "grid" : "none";
 }
 
-// ========== 通知 ==========
+// ================================================================
+//  [E1] 即時通知（SOS / 低電量 / 溫度）
+// ================================================================
 function checkAlerts() {
   latestData.forEach((tag) => {
     const alias = tagAliases[tag.mac] || tag.mac;
@@ -483,7 +573,9 @@ function playAlertSound(freq, times) {
   } catch (e) { /* audio not supported */ }
 }
 
-// ========== 自動刷新 ==========
+// ================================================================
+//  [A6] 自動刷新與篩選
+// ================================================================
 function startAutoRefresh() {
   stopAutoRefresh();
   autoRefreshCountdown = AUTO_REFRESH_INTERVAL;
@@ -520,7 +612,7 @@ async function refreshAll() {
   if (btn) btn.style.animation = "";
 }
 
-// ========== 篩選 ==========
+// ---------- 篩選 ----------
 function filterTags(filter, btn) {
   currentFilter = filter;
   document.querySelectorAll("#filter-bar .btn-chip").forEach((b) => b.classList.remove("active"));
@@ -537,7 +629,9 @@ function getFilteredData() {
   return latestData;
 }
 
-// ========== 渲染 Tag 清單 ==========
+// ================================================================
+//  [B2] Tag 清單渲染與命名
+// ================================================================
 function renderTagList() {
   const container = document.getElementById("tag-list");
   let filtered = getFilteredData();
@@ -601,7 +695,7 @@ function renderTagList() {
   }).join("");
 }
 
-// ========== Tag 命名 ==========
+// ---------- Tag 命名 ----------
 function renameTag(mac) {
   const name = prompt(`為 ${mac} 設定名稱：`, tagAliases[mac] || "");
   if (name === null) return;
@@ -612,7 +706,9 @@ function renameTag(mac) {
   populateHistoryCheckboxes();
 }
 
-// ========== 更新地圖 Markers ==========
+// ================================================================
+//  [B3] 地圖 Markers 更新
+// ================================================================
 function updateMarkers() {
   Object.values(markers).forEach((m) => map.removeLayer(m));
   markers = {};
@@ -665,7 +761,9 @@ function toggleFullscreen() {
   else document.exitFullscreen();
 }
 
-// ========== 面板切換 ==========
+// ================================================================
+//  [B5] 面板切換、深色模式
+// ================================================================
 function switchPanel(name) {
   document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
   document.querySelectorAll(".nav-btn").forEach((b) => b.classList.remove("active"));
@@ -679,7 +777,7 @@ function toggleSection(id) {
   document.getElementById(id).classList.toggle("section-collapsed");
 }
 
-// ========== 深色模式 ==========
+// ---------- 深色模式 ----------
 function toggleDarkMode() {
   const html = document.documentElement;
   const isDark = html.getAttribute("data-theme") === "dark";
@@ -693,7 +791,9 @@ function toggleDarkMode() {
   if (saved) document.documentElement.setAttribute("data-theme", saved);
 })();
 
-// ========== 歷史軌跡（多 Tag 比對） ==========
+// ================================================================
+//  [C1] 歷史軌跡查詢（多 Tag 比對）
+// ================================================================
 function populateHistoryCheckboxes() {
   const container = document.getElementById("history-mac-checkboxes");
   container.innerHTML = allTags.map((t, i) => {
@@ -858,7 +958,9 @@ function clearHistory() {
   document.getElementById("playback-controls").style.display = "none";
 }
 
-// ========== 軌跡回放 ==========
+// ================================================================
+//  [C2] 軌跡回放
+// ================================================================
 function setupPlayback(data) {
   playbackData = data.filter((p) => p.lastLatitude != null);
   if (playbackData.length < 2) return;
@@ -926,7 +1028,9 @@ function updatePlaybackTime() {
   document.getElementById("playback-time").textContent = formatTime(p.lastRequestDate);
 }
 
-// ========== 匯出 ==========
+// ================================================================
+//  [C4] 匯出（CSV / GeoJSON）
+// ================================================================
 function exportHistory(format) {
   if (historyRawData.length === 0) {
     showToast("請先查詢歷史軌跡", "warning"); return;
@@ -955,7 +1059,9 @@ function downloadFile(content, filename, type) {
   document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
-// ========== 距離測量 ==========
+// ================================================================
+//  [D2] 距離測量、地址反查
+// ================================================================
 function toggleMeasure() {
   measureMode = !measureMode;
   document.getElementById("btn-measure").classList.toggle("active", measureMode);
@@ -1010,7 +1116,7 @@ function clearMeasure() {
   map.getContainer().style.cursor = "";
 }
 
-// ========== 地址反查 ==========
+// ---------- 地址反查 ----------
 function toggleClickGeocode() {
   geocodeMode = !geocodeMode;
   document.getElementById("btn-geocode").classList.toggle("active", geocodeMode);
@@ -1044,7 +1150,9 @@ async function reverseGeocode(latlng) {
   }
 }
 
-// ========== 地理圍欄 ==========
+// ================================================================
+//  [D1] 圓形 / 多邊形圍欄
+// ================================================================
 function startGeofencePick() {
   geofencePickMode = true;
   geofencePickLatLng = null;
@@ -1149,7 +1257,7 @@ function checkGeofenceAlerts() {
 }
 const geofenceAlertSent = new Set();
 
-// ========== 工具函式 ==========
+// ---------- 工具函式 ----------
 function delay(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
 function formatTime(isoStr) {
@@ -1196,7 +1304,7 @@ function haversine(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// ========== 方案資訊 ==========
+// ---------- 方案資訊 ----------
 function detectPlan(tags) {
   const c = tags.length;
   if (c <= 100) return "Basic";
@@ -1223,7 +1331,7 @@ function renderPlanError(message) {
   document.getElementById("plan-content").innerHTML = `<div class="plan-row"><span class="plan-label">狀態</span><span class="plan-value" style="color:var(--danger);">${message}</span></div>`;
 }
 
-// ========== Tag 詳情面板 ==========
+// ---------- Tag 詳情面板 ----------
 function showTagDetail(mac) {
   const tag = latestData.find((t) => t.mac === mac);
   if (!tag) return;
@@ -1298,7 +1406,9 @@ function generateSparklineSVG(data, min, max, color) {
   </svg>`;
 }
 
-// ========== 熱力圖 ==========
+// ================================================================
+//  [B4] 熱力圖、群集
+// ================================================================
 function toggleHeatmap() {
   heatmapOn = !heatmapOn;
   document.getElementById("btn-heatmap").classList.toggle("active", heatmapOn);
@@ -1315,7 +1425,7 @@ function toggleHeatmap() {
   }
 }
 
-// ========== Marker 群集 ==========
+// ---------- Marker 群集 ----------
 function toggleClustering() {
   clusterOn = !clusterOn;
   document.getElementById("btn-cluster").classList.toggle("active", clusterOn);
@@ -1336,7 +1446,7 @@ function toggleClustering() {
   }
 }
 
-// ========== 速度計算 (歷史軌跡) ==========
+// ---------- 速度計算 (歷史軌跡) ----------
 function calcSpeed(p1, p2) {
   if (!p1.lastRequestDate || !p2.lastRequestDate) return null;
   const dist = haversine(p1.lastLatitude, p1.lastLongitude, p2.lastLatitude, p2.lastLongitude);
@@ -1345,7 +1455,7 @@ function calcSpeed(p1, p2) {
   return dist / timeDiff; // km/h
 }
 
-// ========== 事件日誌 ==========
+// ---------- 事件日誌 ----------
 function addEvent(type, message) {
   const icons = { connect: "🔗", sos: "🚨", lowbat: "🔋", temp: "🌡️", geofence: "📍", refresh: "🔄", info: "ℹ️" };
   const evt = {
@@ -1386,7 +1496,7 @@ function clearEventLog() {
   renderEventLog();
 }
 
-// ========== 分享連結 ==========
+// ---------- 分享連結 ----------
 function shareTag() {
   const detailMac = document.querySelector(".detail-mac");
   if (!detailMac) return;
@@ -1403,7 +1513,9 @@ function shareTag() {
   addEvent("info", `分享了 ${tagAliases[mac] || mac} 的位置`);
 }
 
-// ========== 列印報告 ==========
+// ================================================================
+//  [G1] 使用報表、列印報告
+// ================================================================
 function printReport() {
   if (historyRawData.length === 0) { showToast("請先查詢歷史軌跡", "warning"); return; }
 
@@ -1435,7 +1547,7 @@ function printReport() {
   printWin.print();
 }
 
-// ========== 通知音效開關 ==========
+// ---------- 通知音效開關 ----------
 function toggleNotifSound() {
   soundEnabled = !soundEnabled;
   const btn = document.getElementById("btn-sound");
@@ -1443,7 +1555,9 @@ function toggleNotifSound() {
   showToast(soundEnabled ? "通知音效已開啟" : "通知音效已關閉", "info", 2000);
 }
 
-// ========== 多語系 (i18n) ==========
+// ================================================================
+//  [I3] 多語系 (i18n)
+// ================================================================
 const LANG = {
   zh: {
     dashboard: "總覽 Dashboard", connect: "連線", online: "在線裝置", lowbat: "低電量",
@@ -1482,12 +1596,14 @@ function applyLang() {
   });
 }
 
-// ========== PWA ==========
+// ================================================================
+//  [K3] 離線模式 / PWA
+// ================================================================
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js").catch((e) => console.log("SW registration failed:", e));
 }
 
-// ========== 鍵盤快捷鍵 ==========
+// ---------- 鍵盤快捷鍵 ----------
 document.addEventListener("keydown", (e) => {
   // 不攔截輸入框中的按鍵
   if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
@@ -1509,7 +1625,7 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-// ========== 通知增強（加入事件日誌） ==========
+// ---------- 通知增強（加入事件日誌） ----------
 const _origCheckAlerts = checkAlerts;
 checkAlerts = function() {
   const prevSos = new Set(lastNotifiedSos);
@@ -1531,7 +1647,7 @@ checkAlerts = function() {
   });
 };
 
-// ========== 更新 Markers 支援群集 ==========
+// ---------- 更新 Markers 支援群集 ----------
 const _origUpdateMarkers = updateMarkers;
 updateMarkers = function() {
   // 清除群集
@@ -1546,7 +1662,7 @@ updateMarkers = function() {
   _origUpdateMarkers();
 };
 
-// ========== 歷史統計增加速度 ==========
+// ---------- 歷史統計增加速度 ----------
 const _origShowHistoryStats = showHistoryStats;
 showHistoryStats = function(data) {
   _origShowHistoryStats(data);
@@ -1575,11 +1691,13 @@ showHistoryStats = function(data) {
   }
 };
 
-// ========== 初始化 ==========
+// ---------- 初始化 ----------
 applyLang();
 renderEventLog();
 
-// ========== 1. 路徑回放箭頭 + 速度色彩 ==========
+// ================================================================
+//  [C2+] 路徑回放箭頭 + 速度色彩
+// ================================================================
 let directionArrows = [];
 
 function getSpeedColor(speedKmh) {
@@ -1628,7 +1746,9 @@ drawHistory = function(data, color, mac) {
   }
 };
 
-// ========== 2. 多邊形圍欄 ==========
+// ================================================================
+//  [D1+] 多邊形圍欄
+// ================================================================
 let polygonGeofences = JSON.parse(localStorage.getItem("utfind_poly_geofences") || "[]");
 let polyDrawMode = false;
 let polyPoints = [];
@@ -1718,7 +1838,9 @@ function isPointInPolygon(lat, lng, polygon) {
   return inside;
 }
 
-// ========== 3. 停留點分析 ==========
+// ================================================================
+//  [C3] 停留點分析
+// ================================================================
 let dwellMarkers = [];
 
 function analyzeDwellPoints() {
@@ -1803,7 +1925,9 @@ function analyzeDwellPoints() {
   showToast(`找到 ${allDwells.length} 個停留點`, "success");
 }
 
-// ========== 4. 室內平面圖 ==========
+// ================================================================
+//  [D3] 室內平面圖、POI 標註
+// ================================================================
 let floorPlanOverlay = null;
 let floorPlanControls = null;
 
@@ -1858,7 +1982,7 @@ function removeFloorPlan() {
   if (floorPlanControls) floorPlanControls.style.display = "none";
 }
 
-// ========== 5. 使用報表 ==========
+// ---------- 使用報表 ----------
 function generateReport(period) {
   const output = document.getElementById("report-output");
   if (latestData.length === 0) { output.innerHTML = '<div class="empty-state">尚無資料</div>'; return; }
@@ -1899,7 +2023,7 @@ function printReportSummary() {
   win.print();
 }
 
-// ========== 6. 異常行為偵測 ==========
+// ---------- 異常行為偵測 ----------
 function detectAnomalies() {
   const anomalies = [];
 
@@ -1959,7 +2083,9 @@ function renderAnomalyList() {
   `).join("");
 }
 
-// ========== 7. 電量預測 ==========
+// ================================================================
+//  [F4] 裝置健康評分、電量預測
+// ================================================================
 function predictBattery() {
   const predictions = [];
 
@@ -2012,7 +2138,7 @@ function renderBatteryPrediction() {
   }).join("");
 }
 
-// ========== 8. 裝置健康評分 ==========
+// ---------- 裝置健康評分 ----------
 function calcHealthScore(tag) {
   let score = 100;
 
@@ -2079,7 +2205,9 @@ function renderHealthScores() {
   }).join("");
 }
 
-// ========== 9. 角色權限 ==========
+// ================================================================
+//  [H2] 角色權限
+// ================================================================
 let currentRole = localStorage.getItem("utfind_role") || "admin";
 
 function saveRole(role) {
@@ -2101,7 +2229,9 @@ function updateRoleDesc() {
   if (roleSelect) roleSelect.value = currentRole;
 }
 
-// ========== 10. Tag 分組 ==========
+// ================================================================
+//  [F2] Tag 分組與群組
+// ================================================================
 let tagGroups = JSON.parse(localStorage.getItem("utfind_groups") || "[]");
 
 function populateGroupCheckboxes() {
@@ -2158,7 +2288,7 @@ function renderGroupList() {
   }).join("");
 }
 
-// ========== 11. 任務指派 ==========
+// ---------- 任務指派 ----------
 let tasks = JSON.parse(localStorage.getItem("utfind_tasks") || "[]");
 
 function populateTaskTagSelect() {
@@ -2237,7 +2367,9 @@ function renderTaskList() {
   }).join("");
 }
 
-// ========== 12. 稽核日誌 ==========
+// ================================================================
+//  [H5] 稽核日誌
+// ================================================================
 let auditLog = JSON.parse(localStorage.getItem("utfind_audit") || "[]").slice(0, 200);
 
 function addAudit(action) {
@@ -2272,7 +2404,9 @@ function renderAuditLog() {
   `).join("");
 }
 
-// ========== 13. 多渠道通知 ==========
+// ================================================================
+//  [E3] 多渠道通知（LINE / Telegram / Webhook）
+// ================================================================
 let notifConfig = JSON.parse(localStorage.getItem("utfind_notif_config") || "{}");
 
 function saveNotifConfig() {
@@ -2341,7 +2475,9 @@ showToast = function(message, type, duration) {
   }
 };
 
-// ========== 14. 排程通知 ==========
+// ================================================================
+//  [E4] 排程通知
+// ================================================================
 let scheduleTimer = null;
 
 function saveSchedule() {
@@ -2375,7 +2511,9 @@ function loadSchedule() {
   }
 }
 
-// ========== 15. 第三方整合 ==========
+// ================================================================
+//  [H3] 第三方整合、API Webhook
+// ================================================================
 let integrationConfig = JSON.parse(localStorage.getItem("utfind_integrations") || "{}");
 
 function exportToGoogleSheets() {
@@ -2405,7 +2543,7 @@ function loadIntegrationConfig() {
   }
 }
 
-// ========== 16. API Webhook ==========
+// ---------- API Webhook ----------
 let webhookConfig = JSON.parse(localStorage.getItem("utfind_webhook_config") || "{}");
 
 function saveWebhookConfig() {
@@ -2445,7 +2583,9 @@ function triggerWebhook(eventType, payload) {
   }).catch(e => console.log("Webhook trigger error:", e));
 }
 
-// ========== 17. OTA 韌體更新 (模擬) ==========
+// ================================================================
+//  [F3] OTA 韌體更新、E-Ink 標籤
+// ================================================================
 function renderOTAList() {
   const container = document.getElementById("ota-list");
   if (!container) return;
@@ -2474,7 +2614,7 @@ function simulateOTA(mac) {
   showToast(`${tagAliases[mac] || mac} 韌體已是最新版本`, "info");
 }
 
-// ========== 18. E-Ink 標籤顯示 (模擬) ==========
+// ---------- E-Ink 標籤顯示 ----------
 function populateEinkSelect() {
   const sel = document.getElementById("eink-tag-select");
   if (!sel || allTags.length === 0) return;
@@ -2503,7 +2643,9 @@ function sendEinkUpdate() {
   }, 1500);
 }
 
-// ========== 19. 資產生命週期 ==========
+// ================================================================
+//  [F5] 資產生命週期
+// ================================================================
 let assetLifecycle = JSON.parse(localStorage.getItem("utfind_assets") || "{}");
 
 function cycleAssetStatus(mac) {
@@ -2544,7 +2686,9 @@ function renderAssetList() {
   }).join("");
 }
 
-// ========== 20. SLA 監控 ==========
+// ================================================================
+//  [G3] SLA 監控
+// ================================================================
 function renderSLA() {
   const output = document.getElementById("sla-output");
   const targetMin = parseInt(document.getElementById("sla-target").value) || 60;
@@ -2581,7 +2725,10 @@ function renderSLA() {
   }).join("");
 }
 
-// ========== 冷鏈：GDP/GSP 合規報告 ==========
+// ================================================================
+//  [J1] 冷鏈管理
+// ================================================================
+// ---------- GDP/GSP 合規報告 ----------
 function populateColdChainSelects() {
   const selects = ["gdp-tag-select", "batch-tag-select", "handover-tag-select", "tempzone-tag-select", "loading-tag-select", "eta-tag-select"];
   selects.forEach(id => {
@@ -2654,7 +2801,7 @@ function generateGDPReport() {
   addEvent("info", `產出 ${alias} 的 GDP/GSP 合規報告`);
 }
 
-// ========== 冷鏈：溫度逸脫計時器 ==========
+// ---------- 溫度逸脫計時器 ----------
 let excursionTimers = JSON.parse(localStorage.getItem("utfind_excursions") || "{}");
 
 function updateExcursionTimers() {
@@ -2706,7 +2853,7 @@ function renderExcursionList() {
   }).join("");
 }
 
-// ========== 冷鏈：批號綁定 ==========
+// ---------- 批號綁定 ----------
 let batchBindings = JSON.parse(localStorage.getItem("utfind_batches") || "{}");
 
 function saveBatchBinding() {
@@ -2747,7 +2894,7 @@ function deleteBatch(mac) {
   renderExpiryCountdown();
 }
 
-// ========== 冷鏈：交接簽收鏈 ==========
+// ---------- 交接簽收鏈 ----------
 let handoverRecords = JSON.parse(localStorage.getItem("utfind_handovers") || "[]");
 
 function recordHandover() {
@@ -2792,7 +2939,7 @@ function renderHandoverList() {
   }).join("");
 }
 
-// ========== 冷鏈：多段溫層 ==========
+// ---------- 多段溫層 ----------
 let tempZones = JSON.parse(localStorage.getItem("utfind_tempzones") || "{}");
 const TEMP_ZONE_RANGES = {
   cold: { min: 2, max: 8, label: "冷藏" },
@@ -2836,7 +2983,7 @@ function deleteTempZone(mac) {
   renderTempZoneList();
 }
 
-// ========== 冷鏈：HACCP 風險矩陣 ==========
+// ---------- HACCP 風險矩陣 ----------
 function renderHACCPMatrix() {
   const container = document.getElementById("haccp-matrix");
   if (!container || latestData.length === 0) { return; }
@@ -2873,7 +3020,7 @@ function renderHACCPMatrix() {
   `;
 }
 
-// ========== 冷鏈：效期倒數 ==========
+// ---------- 效期倒數 ----------
 function renderExpiryCountdown() {
   const container = document.getElementById("expiry-countdown-list");
   if (!container) return;
@@ -2897,7 +3044,10 @@ function renderExpiryCountdown() {
   }).join("");
 }
 
-// ========== 物流：籠車週轉率 ==========
+// ================================================================
+//  [J2] 物流追蹤
+// ================================================================
+// ---------- 籠車週轉率 ----------
 function renderTurnoverRate() {
   const container = document.getElementById("turnover-list");
   if (!container || latestData.length === 0) { return; }
@@ -2923,7 +3073,7 @@ function renderTurnoverRate() {
   }).join("");
 }
 
-// ========== 物流：門市滯留預警 ==========
+// ---------- 門市滯留預警 ----------
 function checkStoreDwell() {
   const threshold = parseFloat(document.getElementById("dwell-threshold-hours").value) || 4;
   const container = document.getElementById("store-dwell-list");
@@ -2955,7 +3105,7 @@ function checkStoreDwell() {
   showToast(`發現 ${alerts.length} 台滯留裝置`, "warning");
 }
 
-// ========== 物流：路線偏離偵測 ==========
+// ---------- 路線偏離偵測 ----------
 function checkRouteDeviation() {
   const maxDev = parseInt(document.getElementById("route-deviation-m").value) || 500;
   const container = document.getElementById("route-deviation-list");
@@ -3001,7 +3151,7 @@ function checkRouteDeviation() {
   showToast(`發現 ${deviations.length} 筆偏離紀錄`, "warning");
 }
 
-// ========== 物流：裝載率 ==========
+// ---------- 裝載率 ----------
 function calcLoadingRate() {
   const orders = parseInt(document.getElementById("loading-orders").value) || 0;
   const capacity = parseInt(document.getElementById("loading-capacity").value) || 200;
@@ -3017,7 +3167,7 @@ function calcLoadingRate() {
   `;
 }
 
-// ========== 物流：ETA 預測 ==========
+// ---------- ETA 預測 ----------
 let etaDest = null;
 let etaPickMode = false;
 
@@ -3055,7 +3205,7 @@ map.on("click", function etaHandler(e) {
   `;
 });
 
-// ========== 物流：資產盤點 ==========
+// ---------- 資產盤點 ----------
 function inventoryCount() {
   const output = document.getElementById("inventory-result");
   if (latestData.length === 0) { output.innerHTML = '<div class="empty-state">無裝置資料</div>'; return; }
@@ -3094,7 +3244,7 @@ function inventoryCount() {
   addEvent("info", `執行資產盤點，共 ${latestData.length} 台`);
 }
 
-// ========== 物流：調度大屏 ==========
+// ---------- 調度大屏 ----------
 function openDispatchBoard() {
   const board = document.createElement("div");
   board.className = "dispatch-board";
@@ -3136,7 +3286,9 @@ function openDispatchBoard() {
   document.body.appendChild(board);
 }
 
-// ========== 15. 碳足跡計算 ==========
+// ================================================================
+//  [G4] 碳足跡計算
+// ================================================================
 function calcCarbonFootprint() {
   if (historyRawData.length === 0) return { totalKm: 0, co2Kg: 0 };
   let totalKm = 0;
@@ -3150,7 +3302,9 @@ function calcCarbonFootprint() {
   return { totalKm: totalKm.toFixed(1), co2Kg: (totalKm * 0.21).toFixed(2) }; // 0.21 kg CO2/km 柴油貨車
 }
 
-// ========== 16. 語音播報 ==========
+// ================================================================
+//  [K5] 語音播報、QR Code 配對
+// ================================================================
 let voiceEnabled = false;
 
 function toggleVoiceAlert() {
@@ -3180,7 +3334,7 @@ checkAlerts = function() {
   });
 };
 
-// ========== 17. 圍欄自動簽到/簽退 ==========
+// ---------- 圍欄自動簽到/簽退 ----------
 let autoGeofenceLog = JSON.parse(localStorage.getItem("utfind_auto_gf") || "{}");
 
 function checkAutoGeofence() {
@@ -3208,7 +3362,7 @@ function checkAutoGeofence() {
   localStorage.setItem("utfind_auto_gf", JSON.stringify(autoGeofenceLog));
 }
 
-// ========== 18. 多租戶白標 ==========
+// ---------- 多租戶白標 ----------
 let brandConfig = JSON.parse(localStorage.getItem("utfind_brand") || "{}");
 
 function saveBrandConfig(logoText, primaryColor) {
@@ -3227,7 +3381,7 @@ function applyBrand() {
   }
 }
 
-// ========== 19. QR Code 掃碼配對 ==========
+// ---------- QR Code 掃碼配對 ----------
 function generateQRCode(mac) {
   const alias = tagAliases[mac] || mac;
   const data = JSON.stringify({ mac, alias, platform: "UTFind", ts: Date.now() });
@@ -3242,7 +3396,7 @@ function generateQRCode(mac) {
   win.document.close();
 }
 
-// ========== 20. 客戶自助查詢入口 ==========
+// ---------- 客戶自助查詢入口 ----------
 function generateCustomerPortal() {
   if (latestData.length === 0) { showToast("無裝置資料", "warning"); return; }
 
@@ -3295,7 +3449,7 @@ function generateCustomerPortal() {
   addEvent("info", "產出客戶自助查詢入口");
 }
 
-// ========== 版本歷程 ==========
+// ---------- 版本歷程 ----------
 const VERSION_HISTORY = [
   {
     version: "v4.1.0", type: "minor", title: "產業情境 Demo 系統",
@@ -3465,7 +3619,10 @@ function renderVersionHistory() {
   `).join("");
 }
 
-// ========== 報表面板初始化 ==========
+// ================================================================
+//  面板初始化
+// ================================================================
+// ---------- 報表面板初始化 ----------
 function refreshReportsPanel() {
   renderHealthScores();
   renderBatteryPrediction();
@@ -3473,7 +3630,7 @@ function refreshReportsPanel() {
   populateAIPredictSelect();
 }
 
-// ========== 群組面板初始化 ==========
+// ---------- 群組面板初始化 ----------
 function refreshGroupsPanel() {
   populateGroupCheckboxes();
   renderGroupList();
@@ -3482,7 +3639,7 @@ function refreshGroupsPanel() {
   renderAssetList();
 }
 
-// ========== 設定面板初始化 ==========
+// ---------- 設定面板初始化 ----------
 function refreshSettingsPanel() {
   renderManualTagList();
   updateRoleDesc();
@@ -3499,7 +3656,7 @@ function refreshSettingsPanel() {
   loadBrandThemeUI();
 }
 
-// ========== 冷鏈面板初始化 ==========
+// ---------- 冷鏈面板初始化 ----------
 function refreshColdChainPanel() {
   populateColdChainSelects();
   renderExcursionList();
@@ -3510,7 +3667,7 @@ function refreshColdChainPanel() {
   renderExpiryCountdown();
 }
 
-// ========== 物流面板初始化 ==========
+// ---------- 物流面板初始化 ----------
 function refreshLogisticsPanel() {
   populateColdChainSelects();
   renderTurnoverRate();
@@ -3552,7 +3709,7 @@ fetchLatest = async function() {
 // 初始化品牌
 applyBrand();
 
-// ========== DEMO 假資料（冷鏈 + 物流） ==========
+// ---------- DEMO 假資料（冷鏈 + 物流） ----------
 function injectDemoData() {
   // 只在首次或資料為空時注入
   if (Object.keys(batchBindings).length > 0) return;
@@ -3675,7 +3832,9 @@ connect = async function() {
   if (allTags.length > 0) injectDemoData();
 };
 
-// ========== 多帳戶切換 ==========
+// ================================================================
+//  [H1] 多帳戶切換
+// ================================================================
 let savedAccounts = JSON.parse(localStorage.getItem("utfind_accounts") || "[]");
 
 function addAccount() {
@@ -3719,7 +3878,9 @@ function renderAccountList() {
   `).join("");
 }
 
-// ========== 告警規則引擎 ==========
+// ================================================================
+//  [E2] 告警規則引擎
+// ================================================================
 let alertRules = JSON.parse(localStorage.getItem("utfind_alert_rules") || "[]");
 
 function saveAlertRule() {
@@ -3793,7 +3954,9 @@ function renderAlertRules() {
   `).join("");
 }
 
-// ========== 批次 CSV 匯入 ==========
+// ================================================================
+//  [H4] 批次 CSV 匯入
+// ================================================================
 function handleCSVImport(event) {
   const file = event.target.files[0];
   if (!file) return;
@@ -3852,7 +4015,9 @@ function downloadCSVTemplate() {
   a.click();
 }
 
-// ========== 品牌白標主題 ==========
+// ================================================================
+//  [I1] 品牌白標主題 / Logo 上傳
+// ================================================================
 let brandTheme = JSON.parse(localStorage.getItem("utfind_brand_theme") || "null");
 
 function saveBrandTheme() {
@@ -3971,7 +4136,9 @@ function loadBrandThemeUI() {
 // 頁面載入時套用品牌主題
 applyBrandTheme();
 
-// ========== AI 行為預測 ==========
+// ================================================================
+//  [K1] AI 行為預測
+// ================================================================
 function populateAIPredictSelect() {
   const sel = document.getElementById("ai-predict-tag");
   if (!sel || allTags.length === 0) return;
@@ -4053,7 +4220,9 @@ function runAIPrediction() {
   `;
 }
 
-// ========== 數據比對報告 ==========
+// ================================================================
+//  [G2] 數據比對報告
+// ================================================================
 function generateCompareReport() {
   const output = document.getElementById("compare-output");
   if (!output || latestData.length === 0) { if (output) output.innerHTML = '<div class="empty-state">請先連線取得資料</div>'; return; }
@@ -4096,7 +4265,7 @@ function generateCompareReport() {
   `;
 }
 
-// ========== 地圖自訂標註 (POI) ==========
+// ---------- 地圖自訂標註 (POI) ----------
 let pois = JSON.parse(localStorage.getItem("utfind_pois") || "[]");
 let poiMarkers = {};
 let poiPickMode = false;
@@ -4154,7 +4323,9 @@ function drawAllPOIs() {
   pois.forEach(poi => addPOIMarker(poi));
 }
 
-// ========== 即時共享連結 ==========
+// ================================================================
+//  [K2] 即時共享連結
+// ================================================================
 function populateShareSelect() {
   const sel = document.getElementById("share-tag-select");
   if (!sel || allTags.length === 0) return;
@@ -4187,7 +4358,7 @@ function generateShareLink() {
   showToast("分享連結已產生", "success");
 }
 
-// ========== 離線模式 ==========
+// ---------- 離線模式 ----------
 function updateOnlineStatus() {
   const banner = document.getElementById("offline-banner");
   if (!banner) return;
@@ -4219,7 +4390,9 @@ window.addEventListener("online", updateOnlineStatus);
 window.addEventListener("offline", updateOnlineStatus);
 updateOnlineStatus();
 
-// ========== 自訂儀表板 KPI 排列 ==========
+// ================================================================
+//  [K4] 自訂 KPI 排列（拖曳）
+// ================================================================
 let kpiOrder = JSON.parse(localStorage.getItem("utfind_kpi_order") || "null");
 
 function initDraggableKPI() {
@@ -4260,7 +4433,9 @@ function initDraggableKPI() {
   });
 }
 
-// ========== 產業情境 Demo ==========
+// ================================================================
+//  [I2] 產業情境 Demo（8 產業）
+// ================================================================
 const SCENARIOS = {
   hospital: {
     name: "醫院/長照",
@@ -4645,7 +4820,7 @@ function clearScenario() {
   showToast("已清除情境資料", "info");
 }
 
-// ========== Enter 鍵快捷連線 ==========
+// ---------- Enter 鍵快捷連線 ----------
 document.getElementById("api-key").addEventListener("keydown", (e) => { if (e.key === "Enter") connect(); });
 
 // 手動 Tag 輸入 Enter 鍵

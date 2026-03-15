@@ -374,6 +374,209 @@
     <div class="panel" id="panel-settings">
       <div class="panel-header"><h2 data-i18n="settingsIntegration">設定與整合</h2></div>
 
+      <!-- ─── 帳戶與權限 ─── -->
+      <div class="section-group-title">帳戶與權限</div>
+
+      <!-- 多帳戶切換 -->
+      <div class="report-section">
+        <div class="section-title">多帳戶切換</div>
+        <div class="form-row">
+          <div class="form-group" style="flex:2;"><input type="text" id="account-name" placeholder="帳戶名稱" /></div>
+          <div class="form-group" style="flex:2;"><input type="text" id="account-key" placeholder="API Key" /></div>
+          <div class="form-group" style="flex:1;"><button class="btn-accent" onclick="addAccount()" style="width:100%;height:36px;">加入</button></div>
+        </div>
+        <div id="account-list" class="geofence-list"></div>
+      </div>
+
+      <!-- 角色權限 -->
+      <div class="report-section">
+        <div class="section-title">角色權限</div>
+        <div class="form-group">
+          <label>當前角色</label>
+          <select id="user-role" onchange="saveRole(this.value)">
+            <option value="admin">管理員 (Admin)</option>
+            <option value="operator">操作者 (Operator)</option>
+            <option value="viewer">檢視者 (Viewer)</option>
+          </select>
+        </div>
+        <div class="role-desc" id="role-desc"></div>
+      </div>
+
+      <!-- ─── 裝置管理 ─── -->
+      <div class="section-group-title">裝置管理</div>
+
+      <!-- 手動 Tag -->
+      <div class="report-section">
+        <div class="section-title">手動新增 Tag</div>
+        <p style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">加入不在帳戶中的 Tag MAC 地址，連線後一併追蹤</p>
+        <div class="form-row">
+          <div class="form-group" style="flex:3;"><input type="text" id="manual-tag-input" placeholder="例如：C2:85:85:68:38:CA" style="text-transform:uppercase;" /></div>
+          <div class="form-group" style="flex:1;"><button class="btn-accent" onclick="addManualTag()" style="width:100%;height:36px;">新增</button></div>
+        </div>
+        <div id="manual-tag-list" class="geofence-list"></div>
+      </div>
+
+      <!-- 批次匯入 -->
+      <div class="report-section">
+        <div class="section-title">批次匯入</div>
+        <p style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">支援 CSV 匯入 Tag 別名、群組、圍欄設定</p>
+        <div class="form-group">
+          <label>匯入類型</label>
+          <select id="import-type">
+            <option value="aliases">Tag 別名 (MAC,名稱)</option>
+            <option value="groups">群組 (群組名,MAC1;MAC2;...)</option>
+            <option value="geofences">圍欄 (名稱,緯度,經度,半徑)</option>
+          </select>
+        </div>
+        <input type="file" id="csv-import-input" accept=".csv" style="display:none;" onchange="handleCSVImport(event)" />
+        <div class="btn-row">
+          <button class="btn-accent" onclick="document.getElementById('csv-import-input').click()" style="flex:1;">選擇 CSV 檔案</button>
+          <button class="btn-ghost" onclick="downloadCSVTemplate()" style="flex:1;">下載範本</button>
+        </div>
+        <div id="import-status" class="status" style="margin-top:8px;"></div>
+      </div>
+
+      <!-- OTA 韌體更新 -->
+      <div class="report-section">
+        <div class="section-title">OTA 韌體更新</div>
+        <div id="ota-list" class="tag-list"></div>
+      </div>
+
+      <!-- E-Ink 標籤 -->
+      <div class="report-section">
+        <div class="section-title">E-Ink 標籤顯示</div>
+        <div class="form-group"><label>選擇 Tag</label><select id="eink-tag-select"></select></div>
+        <div class="form-group"><label>顯示文字 (最多 20 字)</label><input type="text" id="eink-text" maxlength="20" placeholder="輸入要顯示的文字" /></div>
+        <button class="btn-accent" onclick="sendEinkUpdate()">更新標籤內容</button>
+        <div id="eink-status" class="status"></div>
+      </div>
+
+      <!-- ─── 告警與通知 ─── -->
+      <div class="section-group-title">告警與通知</div>
+
+      <!-- 告警規則引擎 -->
+      <div class="report-section">
+        <div class="section-title">告警規則引擎</div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1;">
+            <label>條件 A</label>
+            <select id="rule-cond-a">
+              <option value="temp_high">溫度 > 上限</option>
+              <option value="temp_low">溫度 < 下限</option>
+              <option value="bat_low">電量 < 閾值</option>
+              <option value="sos">SOS 狀態</option>
+              <option value="offline">離線超時</option>
+              <option value="geofence_out">離開圍欄</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label>邏輯</label>
+            <select id="rule-logic">
+              <option value="or">任一成立 (OR)</option>
+              <option value="and">同時成立 (AND)</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label>條件 B (選填)</label>
+            <select id="rule-cond-b">
+              <option value="">不使用</option>
+              <option value="temp_high">溫度 > 上限</option>
+              <option value="temp_low">溫度 < 下限</option>
+              <option value="bat_low">電量 < 閾值</option>
+              <option value="sos">SOS 狀態</option>
+              <option value="offline">離線超時</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1;"><label>規則名稱</label><input type="text" id="rule-name" placeholder="例如：冷藏異常告警" /></div>
+          <div class="form-group" style="flex:1;"><label>閾值</label><input type="number" id="rule-threshold" value="20" /></div>
+        </div>
+        <button class="btn-accent" onclick="saveAlertRule()">建立規則</button>
+        <div id="alert-rules-list" class="geofence-list" style="margin-top:10px;"></div>
+      </div>
+
+      <!-- 多渠道通知 -->
+      <div class="report-section">
+        <div class="section-title" data-i18n="notifChannels">多渠道通知</div>
+        <div class="form-group"><label>LINE Notify Token</label><input type="text" id="line-token" placeholder="輸入 LINE Notify Token" /></div>
+        <div class="form-group"><label>Telegram Bot Token</label><input type="text" id="telegram-token" placeholder="Bot Token" /></div>
+        <div class="form-group"><label>Telegram Chat ID</label><input type="text" id="telegram-chat" placeholder="Chat ID" /></div>
+        <div class="form-group"><label>Webhook URL</label><input type="text" id="webhook-url" placeholder="https://..." /></div>
+        <button class="btn-accent" onclick="saveNotifConfig()">儲存通知設定</button>
+        <button class="btn-ghost" style="width:100%;margin-top:6px;" onclick="testNotifChannels()">測試通知</button>
+      </div>
+
+      <!-- 排程通知 -->
+      <div class="report-section">
+        <div class="section-title" data-i18n="scheduledNotif">排程通知</div>
+        <div class="form-group">
+          <label>定時摘要</label>
+          <select id="schedule-interval" onchange="saveSchedule()">
+            <option value="0">關閉</option>
+            <option value="3600">每小時</option>
+            <option value="21600">每 6 小時</option>
+            <option value="86400">每天</option>
+          </select>
+        </div>
+        <div id="schedule-status" class="status"></div>
+      </div>
+
+      <!-- ─── 整合與 API ─── -->
+      <div class="section-group-title">整合與 API</div>
+
+      <!-- 第三方整合 -->
+      <div class="report-section">
+        <div class="section-title">第三方整合</div>
+        <button class="btn-ghost" style="width:100%;margin-bottom:6px;" onclick="exportToGoogleSheets()">匯出至 Google Sheets</button>
+        <div class="form-group"><label>IFTTT Webhook Key</label><input type="text" id="ifttt-key" placeholder="IFTTT Webhook Key" /></div>
+        <button class="btn-ghost" style="width:100%;" onclick="saveIntegrationConfig()">儲存整合設定</button>
+      </div>
+
+      <!-- API Webhook -->
+      <div class="report-section">
+        <div class="section-title">API Webhook</div>
+        <div class="form-group"><label>事件回呼 URL</label><input type="text" id="api-webhook-url" placeholder="https://your-server.com/webhook" /></div>
+        <div class="form-group">
+          <label>觸發事件</label>
+          <div class="webhook-events">
+            <label class="mac-checkbox-item"><input type="checkbox" id="wh-sos" checked /> SOS 求救</label>
+            <label class="mac-checkbox-item"><input type="checkbox" id="wh-lowbat" checked /> 低電量</label>
+            <label class="mac-checkbox-item"><input type="checkbox" id="wh-temp" checked /> 溫度異常</label>
+            <label class="mac-checkbox-item"><input type="checkbox" id="wh-geofence" checked /> 圍欄離開</label>
+          </div>
+        </div>
+        <button class="btn-accent" onclick="saveWebhookConfig()">儲存 Webhook</button>
+      </div>
+
+      <!-- ─── 外觀與品牌 ─── -->
+      <div class="section-group-title">外觀與品牌</div>
+
+      <!-- 品牌主題 -->
+      <div class="report-section">
+        <div class="section-title">品牌白標設定</div>
+        <div class="form-group"><label>公司名稱</label><input type="text" id="brand-company" placeholder="您的公司名稱" /></div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1;"><label>主色</label><input type="color" id="brand-primary" value="#3b82f6" style="height:36px;padding:2px;" /></div>
+          <div class="form-group" style="flex:1;"><label>強調色</label><input type="color" id="brand-accent" value="#8b5cf6" style="height:36px;padding:2px;" /></div>
+        </div>
+        <div class="form-group">
+          <label>Logo 上傳</label>
+          <div class="brand-logo-upload" id="brand-logo-drop" onclick="document.getElementById('brand-logo-file').click()">
+            <div id="brand-logo-preview" class="brand-logo-preview">
+              <span style="font-size:24px;color:var(--text-muted);">+</span>
+              <span style="font-size:10px;color:var(--text-muted);">點擊或拖曳圖片上傳</span>
+            </div>
+          </div>
+          <input type="file" id="brand-logo-file" accept="image/*" style="display:none;" onchange="handleLogoUpload(event)" />
+        </div>
+        <div class="form-group"><label>或輸入 Logo URL</label><input type="text" id="brand-logo-url" placeholder="https://..." /></div>
+        <div class="btn-row">
+          <button class="btn-accent" onclick="saveBrandTheme()" style="flex:1;">套用品牌主題</button>
+          <button class="btn-ghost" onclick="resetBrandTheme()" style="flex:1;">重置</button>
+        </div>
+      </div>
+
       <!-- 產業情境 Demo -->
       <div class="report-section">
         <div class="section-title">產業情境 Demo</div>
@@ -440,193 +643,8 @@
         <button class="btn-ghost" onclick="clearScenario()" style="width:100%;margin-top:6px;">清除情境資料</button>
       </div>
 
-      <!-- 多帳戶切換 -->
-      <div class="report-section">
-        <div class="section-title">多帳戶切換</div>
-        <div class="form-row">
-          <div class="form-group" style="flex:2;"><input type="text" id="account-name" placeholder="帳戶名稱" /></div>
-          <div class="form-group" style="flex:2;"><input type="text" id="account-key" placeholder="API Key" /></div>
-          <div class="form-group" style="flex:1;"><button class="btn-accent" onclick="addAccount()" style="width:100%;height:36px;">加入</button></div>
-        </div>
-        <div id="account-list" class="geofence-list"></div>
-      </div>
-
-      <!-- 手動 Tag -->
-      <div class="report-section">
-        <div class="section-title">手動新增 Tag</div>
-        <p style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">加入不在帳戶中的 Tag MAC 地址，連線後一併追蹤</p>
-        <div class="form-row">
-          <div class="form-group" style="flex:3;"><input type="text" id="manual-tag-input" placeholder="例如：C2:85:85:68:38:CA" style="text-transform:uppercase;" /></div>
-          <div class="form-group" style="flex:1;"><button class="btn-accent" onclick="addManualTag()" style="width:100%;height:36px;">新增</button></div>
-        </div>
-        <div id="manual-tag-list" class="geofence-list"></div>
-      </div>
-
-      <!-- 角色權限 -->
-      <div class="report-section">
-        <div class="section-title">角色權限</div>
-        <div class="form-group">
-          <label>當前角色</label>
-          <select id="user-role" onchange="saveRole(this.value)">
-            <option value="admin">管理員 (Admin)</option>
-            <option value="operator">操作者 (Operator)</option>
-            <option value="viewer">檢視者 (Viewer)</option>
-          </select>
-        </div>
-        <div class="role-desc" id="role-desc"></div>
-      </div>
-
-      <!-- 多渠道通知 -->
-      <div class="report-section">
-        <div class="section-title" data-i18n="notifChannels">多渠道通知</div>
-        <div class="form-group"><label>LINE Notify Token</label><input type="text" id="line-token" placeholder="輸入 LINE Notify Token" /></div>
-        <div class="form-group"><label>Telegram Bot Token</label><input type="text" id="telegram-token" placeholder="Bot Token" /></div>
-        <div class="form-group"><label>Telegram Chat ID</label><input type="text" id="telegram-chat" placeholder="Chat ID" /></div>
-        <div class="form-group"><label>Webhook URL</label><input type="text" id="webhook-url" placeholder="https://..." /></div>
-        <button class="btn-accent" onclick="saveNotifConfig()">儲存通知設定</button>
-        <button class="btn-ghost" style="width:100%;margin-top:6px;" onclick="testNotifChannels()">測試通知</button>
-      </div>
-
-      <!-- 排程通知 -->
-      <div class="report-section">
-        <div class="section-title" data-i18n="scheduledNotif">排程通知</div>
-        <div class="form-group">
-          <label>定時摘要</label>
-          <select id="schedule-interval" onchange="saveSchedule()">
-            <option value="0">關閉</option>
-            <option value="3600">每小時</option>
-            <option value="21600">每 6 小時</option>
-            <option value="86400">每天</option>
-          </select>
-        </div>
-        <div id="schedule-status" class="status"></div>
-      </div>
-
-      <!-- 告警規則引擎 -->
-      <div class="report-section">
-        <div class="section-title">告警規則引擎</div>
-        <div class="form-row">
-          <div class="form-group" style="flex:1;">
-            <label>條件 A</label>
-            <select id="rule-cond-a">
-              <option value="temp_high">溫度 > 上限</option>
-              <option value="temp_low">溫度 < 下限</option>
-              <option value="bat_low">電量 < 閾值</option>
-              <option value="sos">SOS 狀態</option>
-              <option value="offline">離線超時</option>
-              <option value="geofence_out">離開圍欄</option>
-            </select>
-          </div>
-          <div class="form-group" style="flex:1;">
-            <label>邏輯</label>
-            <select id="rule-logic">
-              <option value="or">任一成立 (OR)</option>
-              <option value="and">同時成立 (AND)</option>
-            </select>
-          </div>
-          <div class="form-group" style="flex:1;">
-            <label>條件 B (選填)</label>
-            <select id="rule-cond-b">
-              <option value="">不使用</option>
-              <option value="temp_high">溫度 > 上限</option>
-              <option value="temp_low">溫度 < 下限</option>
-              <option value="bat_low">電量 < 閾值</option>
-              <option value="sos">SOS 狀態</option>
-              <option value="offline">離線超時</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group" style="flex:1;"><label>規則名稱</label><input type="text" id="rule-name" placeholder="例如：冷藏異常告警" /></div>
-          <div class="form-group" style="flex:1;"><label>閾值</label><input type="number" id="rule-threshold" value="20" /></div>
-        </div>
-        <button class="btn-accent" onclick="saveAlertRule()">建立規則</button>
-        <div id="alert-rules-list" class="geofence-list" style="margin-top:10px;"></div>
-      </div>
-
-      <!-- 批次匯入 -->
-      <div class="report-section">
-        <div class="section-title">批次匯入</div>
-        <p style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">支援 CSV 匯入 Tag 別名、群組、圍欄設定</p>
-        <div class="form-group">
-          <label>匯入類型</label>
-          <select id="import-type">
-            <option value="aliases">Tag 別名 (MAC,名稱)</option>
-            <option value="groups">群組 (群組名,MAC1;MAC2;...)</option>
-            <option value="geofences">圍欄 (名稱,緯度,經度,半徑)</option>
-          </select>
-        </div>
-        <input type="file" id="csv-import-input" accept=".csv" style="display:none;" onchange="handleCSVImport(event)" />
-        <div class="btn-row">
-          <button class="btn-accent" onclick="document.getElementById('csv-import-input').click()" style="flex:1;">選擇 CSV 檔案</button>
-          <button class="btn-ghost" onclick="downloadCSVTemplate()" style="flex:1;">下載範本</button>
-        </div>
-        <div id="import-status" class="status" style="margin-top:8px;"></div>
-      </div>
-
-      <!-- 品牌主題 -->
-      <div class="report-section">
-        <div class="section-title">品牌白標設定</div>
-        <div class="form-group"><label>公司名稱</label><input type="text" id="brand-company" placeholder="您的公司名稱" /></div>
-        <div class="form-row">
-          <div class="form-group" style="flex:1;"><label>主色</label><input type="color" id="brand-primary" value="#3b82f6" style="height:36px;padding:2px;" /></div>
-          <div class="form-group" style="flex:1;"><label>強調色</label><input type="color" id="brand-accent" value="#8b5cf6" style="height:36px;padding:2px;" /></div>
-        </div>
-        <div class="form-group">
-          <label>Logo 上傳</label>
-          <div class="brand-logo-upload" id="brand-logo-drop" onclick="document.getElementById('brand-logo-file').click()">
-            <div id="brand-logo-preview" class="brand-logo-preview">
-              <span style="font-size:24px;color:var(--text-muted);">+</span>
-              <span style="font-size:10px;color:var(--text-muted);">點擊或拖曳圖片上傳</span>
-            </div>
-          </div>
-          <input type="file" id="brand-logo-file" accept="image/*" style="display:none;" onchange="handleLogoUpload(event)" />
-        </div>
-        <div class="form-group"><label>或輸入 Logo URL</label><input type="text" id="brand-logo-url" placeholder="https://..." /></div>
-        <div class="btn-row">
-          <button class="btn-accent" onclick="saveBrandTheme()" style="flex:1;">套用品牌主題</button>
-          <button class="btn-ghost" onclick="resetBrandTheme()" style="flex:1;">重置</button>
-        </div>
-      </div>
-
-      <!-- 第三方整合 -->
-      <div class="report-section">
-        <div class="section-title">第三方整合</div>
-        <button class="btn-ghost" style="width:100%;margin-bottom:6px;" onclick="exportToGoogleSheets()">匯出至 Google Sheets</button>
-        <div class="form-group"><label>IFTTT Webhook Key</label><input type="text" id="ifttt-key" placeholder="IFTTT Webhook Key" /></div>
-        <button class="btn-ghost" style="width:100%;" onclick="saveIntegrationConfig()">儲存整合設定</button>
-      </div>
-
-      <!-- API Webhook -->
-      <div class="report-section">
-        <div class="section-title">API Webhook</div>
-        <div class="form-group"><label>事件回呼 URL</label><input type="text" id="api-webhook-url" placeholder="https://your-server.com/webhook" /></div>
-        <div class="form-group">
-          <label>觸發事件</label>
-          <div class="webhook-events">
-            <label class="mac-checkbox-item"><input type="checkbox" id="wh-sos" checked /> SOS 求救</label>
-            <label class="mac-checkbox-item"><input type="checkbox" id="wh-lowbat" checked /> 低電量</label>
-            <label class="mac-checkbox-item"><input type="checkbox" id="wh-temp" checked /> 溫度異常</label>
-            <label class="mac-checkbox-item"><input type="checkbox" id="wh-geofence" checked /> 圍欄離開</label>
-          </div>
-        </div>
-        <button class="btn-accent" onclick="saveWebhookConfig()">儲存 Webhook</button>
-      </div>
-
-      <!-- OTA 韌體更新 -->
-      <div class="report-section">
-        <div class="section-title">OTA 韌體更新</div>
-        <div id="ota-list" class="tag-list"></div>
-      </div>
-
-      <!-- E-Ink 標籤 -->
-      <div class="report-section">
-        <div class="section-title">E-Ink 標籤顯示</div>
-        <div class="form-group"><label>選擇 Tag</label><select id="eink-tag-select"></select></div>
-        <div class="form-group"><label>顯示文字 (最多 20 字)</label><input type="text" id="eink-text" maxlength="20" placeholder="輸入要顯示的文字" /></div>
-        <button class="btn-accent" onclick="sendEinkUpdate()">更新標籤內容</button>
-        <div id="eink-status" class="status"></div>
-      </div>
+      <!-- ─── 系統資訊 ─── -->
+      <div class="section-group-title">系統資訊</div>
 
       <!-- 稽核日誌 -->
       <div class="report-section">
