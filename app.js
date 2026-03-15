@@ -4153,6 +4153,391 @@ function initDraggableKPI() {
   });
 }
 
+// ========== 產業情境 Demo ==========
+const SCENARIOS = {
+  hospital: {
+    name: "醫院/長照",
+    icon: "🏥",
+    brand: { company: "台北榮民總醫院", primary: "#0891b2", accent: "#06b6d4" },
+    aliases: { TAG1: "輪椅 A-01", TAG2: "AED 急救器 #3" },
+    pois: [
+      { name: "急診室", icon: "🚑", lat: 25.1215, lng: 121.5194 },
+      { name: "護理站 2F", icon: "🏥", lat: 25.1218, lng: 121.5197 },
+      { name: "復健中心", icon: "♿", lat: 25.1212, lng: 121.5191 },
+      { name: "藥局", icon: "💊", lat: 25.1220, lng: 121.5200 }
+    ],
+    geofences: [
+      { name: "院區範圍", lat: 25.1216, lng: 121.5196, radius: 300 },
+      { name: "管制區-加護病房", lat: 25.1219, lng: 121.5199, radius: 50 }
+    ],
+    groups: [
+      { name: "輪椅組", color: "#0891b2" },
+      { name: "急救設備", color: "#ef4444" }
+    ],
+    rules: [
+      { name: "設備離開院區", condA: "geofence_out", condB: "", logic: "or", threshold: 20 },
+      { name: "AED 低電量", condA: "bat_low", condB: "", logic: "or", threshold: 30 }
+    ],
+    events: [
+      { type: "info", icon: "♿", message: "輪椅 A-01 已從 3F 護理站借出 — 張護理師" },
+      { type: "info", icon: "✅", message: "輪椅 A-03 已歸還至 1F 大廳" },
+      { type: "warning", icon: "🔋", message: "AED 急救器 #3 電量不足 (18%)，請立即更換電池" },
+      { type: "geofence", icon: "🚨", message: "點滴架 B-05 離開管制區-加護病房" },
+      { type: "info", icon: "📊", message: "今日設備使用率: 輪椅 78%、點滴架 92%" }
+    ]
+  },
+  construction: {
+    name: "營建工地",
+    icon: "🏗️",
+    brand: { company: "宏大營造", primary: "#d97706", accent: "#f59e0b" },
+    aliases: { TAG1: "挖土機 CAT-320", TAG2: "工具箱 T-12" },
+    pois: [
+      { name: "工務所", icon: "🏢", lat: 25.0478, lng: 121.5170 },
+      { name: "材料堆放區", icon: "📦", lat: 25.0482, lng: 121.5175 },
+      { name: "危險區域-基坑", icon: "⚠️", lat: 25.0475, lng: 121.5168 },
+      { name: "出入口", icon: "🚏", lat: 25.0485, lng: 121.5178 }
+    ],
+    geofences: [
+      { name: "工地範圍", lat: 25.0480, lng: 121.5172, radius: 200 },
+      { name: "危險區域-基坑", lat: 25.0475, lng: 121.5168, radius: 30 }
+    ],
+    groups: [
+      { name: "重型機具", color: "#d97706" },
+      { name: "手工具箱", color: "#84cc16" }
+    ],
+    rules: [
+      { name: "機具離開工地", condA: "geofence_out", condB: "", logic: "or", threshold: 20 },
+      { name: "人員進入危險區域", condA: "geofence_out", condB: "sos", logic: "or", threshold: 10 }
+    ],
+    events: [
+      { type: "info", icon: "🏗️", message: "挖土機 CAT-320 啟動作業 — 08:05" },
+      { type: "info", icon: "🔧", message: "工具箱 T-12 已借出 — 王班長" },
+      { type: "warning", icon: "⚠️", message: "工人 W-003 進入基坑危險區域！" },
+      { type: "info", icon: "📋", message: "今日出勤打卡: 已到 23 人 / 預計 25 人" },
+      { type: "info", icon: "📊", message: "挖土機今日使用率: 6.5 小時 (81%)" }
+    ]
+  },
+  school: {
+    name: "學校/校園",
+    icon: "🏫",
+    brand: { company: "台北市立大安國小", primary: "#2563eb", accent: "#3b82f6" },
+    aliases: { TAG1: "校車 A 線", TAG2: "校車 B 線" },
+    pois: [
+      { name: "校門口", icon: "🏫", lat: 25.0265, lng: 121.5435 },
+      { name: "操場", icon: "🏃", lat: 25.0262, lng: 121.5430 },
+      { name: "接送區", icon: "🚐", lat: 25.0268, lng: 121.5438 },
+      { name: "安親班", icon: "📚", lat: 25.0270, lng: 121.5440 }
+    ],
+    geofences: [
+      { name: "校園範圍", lat: 25.0265, lng: 121.5435, radius: 150 },
+      { name: "接送安全區", lat: 25.0268, lng: 121.5438, radius: 50 }
+    ],
+    groups: [
+      { name: "校車", color: "#2563eb" },
+      { name: "學童手環", color: "#f472b6" }
+    ],
+    rules: [
+      { name: "學童離開校園", condA: "geofence_out", condB: "", logic: "or", threshold: 10 },
+      { name: "校車偏離路線", condA: "geofence_out", condB: "", logic: "or", threshold: 15 }
+    ],
+    events: [
+      { type: "info", icon: "🚐", message: "校車 A 線 已從學校出發 — 15:30" },
+      { type: "geofence", icon: "📍", message: "校車 A 線 到達站點「忠孝東路口」" },
+      { type: "info", icon: "👋", message: "小明 已到校 — 家長已收到通知" },
+      { type: "warning", icon: "⚠️", message: "校車 B 線 偏離預定路線 350m" },
+      { type: "info", icon: "📊", message: "今日到校率: 98.5% (197/200)" }
+    ]
+  },
+  pet: {
+    name: "寵物/畜牧",
+    icon: "🐾",
+    brand: { company: "寵愛追蹤", primary: "#ec4899", accent: "#f472b6" },
+    aliases: { TAG1: "柴犬-小橘", TAG2: "牧場牛 #A27" },
+    pois: [
+      { name: "寵物公園", icon: "🌳", lat: 25.0330, lng: 121.5590 },
+      { name: "動物醫院", icon: "🏥", lat: 25.0335, lng: 121.5595 },
+      { name: "牧場", icon: "🐄", lat: 24.9580, lng: 121.2340 },
+      { name: "飼料倉", icon: "🌾", lat: 24.9575, lng: 121.2335 }
+    ],
+    geofences: [
+      { name: "小橘活動範圍", lat: 25.0330, lng: 121.5590, radius: 500 },
+      { name: "牧場範圍", lat: 24.9580, lng: 121.2340, radius: 1000 }
+    ],
+    groups: [
+      { name: "家庭寵物", color: "#ec4899" },
+      { name: "牧場牲畜", color: "#84cc16" }
+    ],
+    rules: [
+      { name: "寵物走失告警", condA: "geofence_out", condB: "", logic: "or", threshold: 10 },
+      { name: "牛隻離開牧場", condA: "geofence_out", condB: "", logic: "or", threshold: 30 }
+    ],
+    events: [
+      { type: "warning", icon: "🐕", message: "小橘 離開活動範圍 200m！飼主已通知" },
+      { type: "info", icon: "🐾", message: "小橘 今日行走 3.2 km，活動量正常" },
+      { type: "info", icon: "🐄", message: "牧場牛 #A27 今日活動範圍正常" },
+      { type: "info", icon: "💤", message: "小橘 已靜止超過 2 小時 — 可能在休息" },
+      { type: "info", icon: "📊", message: "牧場巡牧完成: 全數 45 頭牛在範圍內" }
+    ]
+  },
+  rental: {
+    name: "租賃業",
+    icon: "🚗",
+    brand: { company: "速達租車", primary: "#7c3aed", accent: "#8b5cf6" },
+    aliases: { TAG1: "Toyota Altis #A12", TAG2: "共享單車 B-088" },
+    pois: [
+      { name: "台北租車站", icon: "🚗", lat: 25.0478, lng: 121.5170 },
+      { name: "板橋還車點", icon: "🅿️", lat: 25.0145, lng: 121.4635 },
+      { name: "單車站 A", icon: "🚲", lat: 25.0340, lng: 121.5450 },
+      { name: "維修中心", icon: "🔧", lat: 25.0500, lng: 121.5200 }
+    ],
+    geofences: [
+      { name: "台北營業區", lat: 25.0400, lng: 121.5300, radius: 15000 },
+      { name: "禁止區域-高速公路", lat: 25.0600, lng: 121.5000, radius: 500 }
+    ],
+    groups: [
+      { name: "租賃汽車", color: "#7c3aed" },
+      { name: "共享單車", color: "#06b6d4" }
+    ],
+    rules: [
+      { name: "車輛離開營業區", condA: "geofence_out", condB: "", logic: "or", threshold: 20 },
+      { name: "單車低電量", condA: "bat_low", condB: "", logic: "or", threshold: 15 }
+    ],
+    events: [
+      { type: "info", icon: "🚗", message: "Toyota Altis #A12 已租出 — 客戶:陳先生，預計 3 天" },
+      { type: "info", icon: "🔄", message: "共享單車 B-088 已歸還至板橋站" },
+      { type: "warning", icon: "⚠️", message: "Toyota Altis #A12 逾時未歸還 (已超 2 小時)" },
+      { type: "info", icon: "💰", message: "今日營收: 租車 $12,500 / 單車 $3,200" },
+      { type: "info", icon: "📊", message: "車隊使用率: 汽車 85% / 單車 72%" }
+    ]
+  },
+  exhibition: {
+    name: "展覽/活動",
+    icon: "🎪",
+    brand: { company: "台北國際展覽", primary: "#dc2626", accent: "#ef4444" },
+    aliases: { TAG1: "VIP 貴賓 A", TAG2: "展品箱 #E05" },
+    pois: [
+      { name: "主舞台", icon: "🎤", lat: 25.0340, lng: 121.6150 },
+      { name: "展區 A-科技", icon: "💻", lat: 25.0342, lng: 121.6153 },
+      { name: "展區 B-設計", icon: "🎨", lat: 25.0338, lng: 121.6147 },
+      { name: "VIP 休息室", icon: "⭐", lat: 25.0345, lng: 121.6155 },
+      { name: "餐飲區", icon: "🍽️", lat: 25.0335, lng: 121.6145 }
+    ],
+    geofences: [
+      { name: "展場範圍", lat: 25.0340, lng: 121.6150, radius: 500 },
+      { name: "VIP 專區", lat: 25.0345, lng: 121.6155, radius: 30 }
+    ],
+    groups: [
+      { name: "VIP 貴賓", color: "#dc2626" },
+      { name: "展覽設備", color: "#6366f1" }
+    ],
+    rules: [
+      { name: "展品離開展場", condA: "geofence_out", condB: "", logic: "or", threshold: 10 },
+      { name: "VIP 進入專區", condA: "geofence_out", condB: "", logic: "or", threshold: 5 }
+    ],
+    events: [
+      { type: "info", icon: "⭐", message: "VIP 貴賓 A 進入展區 A-科技 — 停留 12 分鐘" },
+      { type: "info", icon: "👥", message: "展區 A 當前人流: 156 人 (熱門)" },
+      { type: "info", icon: "📦", message: "展品箱 #E05 已送達主舞台" },
+      { type: "info", icon: "🗺️", message: "VIP 動線: 入口→A區→B區→休息室 (平均 45 分鐘)" },
+      { type: "info", icon: "📊", message: "今日入場: 2,340 人 · 平均停留: 2.1 小時" }
+    ]
+  },
+  agriculture: {
+    name: "農業",
+    icon: "🌾",
+    brand: { company: "智慧農場", primary: "#16a34a", accent: "#22c55e" },
+    aliases: { TAG1: "曳引機 JD-01", TAG2: "採收箱 H-15" },
+    pois: [
+      { name: "農舍/辦公室", icon: "🏠", lat: 23.4730, lng: 120.4420 },
+      { name: "A 區稻田", icon: "🌾", lat: 23.4740, lng: 120.4430 },
+      { name: "B 區果園", icon: "🍎", lat: 23.4720, lng: 120.4410 },
+      { name: "灌溉站", icon: "💧", lat: 23.4735, lng: 120.4425 },
+      { name: "冷藏倉", icon: "❄️", lat: 23.4728, lng: 120.4418 }
+    ],
+    geofences: [
+      { name: "農場範圍", lat: 23.4730, lng: 120.4420, radius: 500 },
+      { name: "灌溉區", lat: 23.4735, lng: 120.4425, radius: 100 }
+    ],
+    groups: [
+      { name: "農機具", color: "#16a34a" },
+      { name: "採收箱", color: "#ca8a04" }
+    ],
+    rules: [
+      { name: "農機離開農場", condA: "geofence_out", condB: "", logic: "or", threshold: 20 },
+      { name: "採收箱溫度異常", condA: "temp_high", condB: "", logic: "or", threshold: 25 }
+    ],
+    events: [
+      { type: "info", icon: "🚜", message: "曳引機 JD-01 開始 A 區翻土作業" },
+      { type: "info", icon: "📦", message: "採收箱 H-15 已送至冷藏倉 — 溫度 4.2°C" },
+      { type: "info", icon: "💧", message: "灌溉站已啟動 — A 區自動灌溉中" },
+      { type: "info", icon: "🌡️", message: "B 區果園土壤濕度: 62% (正常)" },
+      { type: "info", icon: "📊", message: "本週農機使用: 曳引機 32h / 搬運車 18h" }
+    ]
+  },
+  port: {
+    name: "港口/航運",
+    icon: "🚢",
+    brand: { company: "高雄港務管理", primary: "#1d4ed8", accent: "#2563eb" },
+    aliases: { TAG1: "貨櫃 CMAU-4521", TAG2: "拖車 T-09" },
+    pois: [
+      { name: "碼頭 A", icon: "⚓", lat: 22.6130, lng: 120.2810 },
+      { name: "碼頭 B", icon: "⚓", lat: 22.6125, lng: 120.2820 },
+      { name: "貨櫃場", icon: "📦", lat: 22.6140, lng: 120.2830 },
+      { name: "海關查驗區", icon: "🛃", lat: 22.6135, lng: 120.2815 },
+      { name: "出口閘門", icon: "🚪", lat: 22.6150, lng: 120.2840 }
+    ],
+    geofences: [
+      { name: "港區範圍", lat: 22.6135, lng: 120.2820, radius: 1000 },
+      { name: "管制區-海關", lat: 22.6135, lng: 120.2815, radius: 80 }
+    ],
+    groups: [
+      { name: "貨櫃", color: "#1d4ed8" },
+      { name: "港區車輛", color: "#f97316" }
+    ],
+    rules: [
+      { name: "貨櫃離開港區", condA: "geofence_out", condB: "", logic: "or", threshold: 20 },
+      { name: "拖車超時等待", condA: "offline", condB: "", logic: "or", threshold: 120 }
+    ],
+    events: [
+      { type: "info", icon: "🚢", message: "貨櫃 CMAU-4521 已從碼頭 A 裝船" },
+      { type: "info", icon: "🚛", message: "拖車 T-09 已將貨櫃送至貨櫃場 B-12 位" },
+      { type: "warning", icon: "⏱️", message: "拖車 T-03 在海關查驗區等待超過 2 小時" },
+      { type: "info", icon: "🛃", message: "貨櫃 CMAU-4521 海關查驗通過" },
+      { type: "info", icon: "📊", message: "今日裝卸: 進港 45 櫃 / 出港 38 櫃 · 平均等待 35 分鐘" }
+    ]
+  }
+};
+
+function loadScenario(key) {
+  const scenario = SCENARIOS[key];
+  if (!scenario) return;
+
+  const macs = allTags.map(t => t.mac);
+  if (macs.length === 0) {
+    showToast("請先連線再載入情境", "warning");
+    return;
+  }
+
+  // 設定別名
+  const tagKeys = Object.keys(scenario.aliases);
+  tagKeys.forEach((tKey, i) => {
+    if (macs[i]) tagAliases[macs[i]] = scenario.aliases[tKey];
+  });
+  localStorage.setItem("utfind_aliases", JSON.stringify(tagAliases));
+
+  // 設定 POI
+  // Clear existing POIs first
+  Object.values(poiMarkers).forEach(m => map.removeLayer(m));
+  poiMarkers = {};
+  pois = scenario.pois.map((p, i) => ({ id: `sc_${key}_${i}`, ...p }));
+  localStorage.setItem("utfind_pois", JSON.stringify(pois));
+  drawAllPOIs();
+
+  // 設定圍欄
+  // Clear existing
+  Object.values(geofenceCircles).forEach(c => map.removeLayer(c));
+  geofenceCircles = {};
+  geofences = scenario.geofences;
+  localStorage.setItem("utfind_geofences", JSON.stringify(geofences));
+  renderGeofenceList();
+  drawAllGeofences();
+
+  // 設定群組
+  tagGroups = scenario.groups.map((g, i) => ({
+    id: `sc_${key}_g${i}`,
+    name: g.name,
+    color: g.color,
+    macs: macs.length > 1 ? [macs[i % macs.length]] : [macs[0]]
+  }));
+  localStorage.setItem("utfind_groups", JSON.stringify(tagGroups));
+
+  // 設定告警規則
+  alertRules = scenario.rules.map((r, i) => ({
+    id: `sc_${key}_r${i}`,
+    ...r,
+    enabled: true
+  }));
+  localStorage.setItem("utfind_alert_rules", JSON.stringify(alertRules));
+
+  // 注入事件
+  const now = Date.now();
+  const newEvents = scenario.events.map((e, i) => ({
+    ...e,
+    time: new Date(now - i * 600000).toISOString()
+  }));
+  eventLog = newEvents.concat(eventLog).slice(0, 200);
+  localStorage.setItem("utfind_events", JSON.stringify(eventLog));
+
+  // 套用品牌主題
+  if (scenario.brand) {
+    brandTheme = scenario.brand;
+    localStorage.setItem("utfind_brand_theme", JSON.stringify(brandTheme));
+    applyBrandTheme();
+  }
+
+  // 更新 UI
+  renderTagList();
+  populateHistoryCheckboxes();
+
+  // 高亮已選情境
+  document.querySelectorAll(".scenario-card").forEach(c => c.classList.remove("scenario-active"));
+  const cards = document.querySelectorAll(".scenario-card");
+  const keys = ["hospital","construction","school","pet","rental","exhibition","agriculture","port"];
+  const idx = keys.indexOf(key);
+  if (idx >= 0 && cards[idx]) cards[idx].classList.add("scenario-active");
+
+  // 跳到地圖上的 POI 位置
+  if (scenario.pois.length > 0) {
+    const bounds = L.latLngBounds(scenario.pois.map(p => [p.lat, p.lng]));
+    map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+  }
+
+  const status = document.getElementById("scenario-status");
+  if (status) {
+    status.className = "status success";
+    status.textContent = `已載入「${scenario.name}」情境 — ${scenario.pois.length} 個標註、${scenario.geofences.length} 個圍欄、${scenario.rules.length} 條規則`;
+  }
+  showToast(`${scenario.icon} 已載入「${scenario.name}」情境`, "success");
+  addEvent("scenario", `載入產業情境: ${scenario.name}`);
+}
+
+function clearScenario() {
+  // 清除情境資料
+  tagAliases = {};
+  localStorage.setItem("utfind_aliases", "{}");
+
+  Object.values(poiMarkers).forEach(m => map.removeLayer(m));
+  poiMarkers = {};
+  pois = [];
+  localStorage.setItem("utfind_pois", "[]");
+
+  Object.values(geofenceCircles).forEach(c => map.removeLayer(c));
+  geofenceCircles = {};
+  geofences = [];
+  localStorage.setItem("utfind_geofences", "[]");
+  renderGeofenceList();
+
+  tagGroups = [];
+  localStorage.setItem("utfind_groups", "[]");
+
+  alertRules = [];
+  localStorage.setItem("utfind_alert_rules", "[]");
+
+  resetBrandTheme();
+
+  document.querySelectorAll(".scenario-card").forEach(c => c.classList.remove("scenario-active"));
+
+  renderTagList();
+  populateHistoryCheckboxes();
+
+  const status = document.getElementById("scenario-status");
+  if (status) {
+    status.className = "status info";
+    status.textContent = "已清除所有情境資料";
+  }
+  showToast("已清除情境資料", "info");
+}
+
 // ========== Enter 鍵快捷連線 ==========
 document.getElementById("api-key").addEventListener("keydown", (e) => { if (e.key === "Enter") connect(); });
 

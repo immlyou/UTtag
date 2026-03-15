@@ -373,6 +373,72 @@
     <div class="panel" id="panel-settings">
       <div class="panel-header"><h2 data-i18n="settingsIntegration">設定與整合</h2></div>
 
+      <!-- 產業情境 Demo -->
+      <div class="report-section">
+        <div class="section-title">產業情境 Demo</div>
+        <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">選擇產業情境，自動載入對應的假資料、別名、圍欄與告警規則</p>
+        <div id="scenario-grid" class="scenario-grid">
+          <div class="scenario-card" onclick="loadScenario('hospital')">
+            <div class="scenario-icon">🏥</div>
+            <div class="scenario-info">
+              <div class="scenario-name">醫院/長照</div>
+              <div class="scenario-desc">輪椅、AED、點滴架追蹤</div>
+            </div>
+          </div>
+          <div class="scenario-card" onclick="loadScenario('construction')">
+            <div class="scenario-icon">🏗️</div>
+            <div class="scenario-info">
+              <div class="scenario-name">營建工地</div>
+              <div class="scenario-desc">機具、工具箱、人員安全</div>
+            </div>
+          </div>
+          <div class="scenario-card" onclick="loadScenario('school')">
+            <div class="scenario-icon">🏫</div>
+            <div class="scenario-info">
+              <div class="scenario-name">學校/校園</div>
+              <div class="scenario-desc">校車追蹤、學童安全</div>
+            </div>
+          </div>
+          <div class="scenario-card" onclick="loadScenario('pet')">
+            <div class="scenario-icon">🐾</div>
+            <div class="scenario-info">
+              <div class="scenario-name">寵物/畜牧</div>
+              <div class="scenario-desc">寵物項圈、牛羊放牧</div>
+            </div>
+          </div>
+          <div class="scenario-card" onclick="loadScenario('rental')">
+            <div class="scenario-icon">🚗</div>
+            <div class="scenario-info">
+              <div class="scenario-name">租賃業</div>
+              <div class="scenario-desc">租車、共享單車、設備租借</div>
+            </div>
+          </div>
+          <div class="scenario-card" onclick="loadScenario('exhibition')">
+            <div class="scenario-icon">🎪</div>
+            <div class="scenario-info">
+              <div class="scenario-name">展覽/活動</div>
+              <div class="scenario-desc">參展設備、VIP 動線追蹤</div>
+            </div>
+          </div>
+          <div class="scenario-card" onclick="loadScenario('agriculture')">
+            <div class="scenario-icon">🌾</div>
+            <div class="scenario-info">
+              <div class="scenario-name">農業</div>
+              <div class="scenario-desc">農機具、灌溉設備、採收箱</div>
+            </div>
+          </div>
+          <div class="scenario-card" onclick="loadScenario('port')">
+            <div class="scenario-icon">🚢</div>
+            <div class="scenario-info">
+              <div class="scenario-name">港口/航運</div>
+              <div class="scenario-desc">貨櫃、拖車、碼頭設備</div>
+            </div>
+          </div>
+        </div>
+        <div id="scenario-status" class="status" style="margin-top:8px;"></div>
+        <button class="btn-ghost" onclick="clearScenario()" style="width:100%;margin-top:6px;">清除情境資料</button>
+      </div>
+
       <!-- 多帳戶切換 -->
       <div class="report-section">
         <div class="section-title">多帳戶切換</div>
