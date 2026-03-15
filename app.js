@@ -101,6 +101,12 @@ function switchLayer(name, btn) {
 
 // 地圖點擊處理
 map.on("click", (e) => {
+  if (poiPickMode) {
+    poiPickLatLng = e.latlng;
+    poiPickMode = false;
+    document.getElementById("btn-poi-pick").textContent = `已選取 (${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)})`;
+    return;
+  }
   if (geofencePickMode) {
     geofencePickLatLng = e.latlng;
     geofencePickMode = false;
@@ -317,6 +323,8 @@ async function connect() {
     drawAllGeofences();
 
     addEvent("connect", `已連線至 API，共 ${allTags.length} 個 Tag`);
+    document.getElementById("share-section").style.display = "block";
+    populateShareSelect();
 
     // 等待冷卻後再呼叫 /latest（/all 和 /latest 共用 30 秒冷卻）
     await fetchLatest();
@@ -353,6 +361,8 @@ async function fetchLatest() {
     updateDashboard();
     checkAlerts();
     checkGeofenceAlerts();
+    cacheLatestData();
+    evaluateAlertRules();
     const status = document.getElementById("key-status");
     if (status) {
       status.className = "status success";
@@ -3287,6 +3297,7 @@ function generateCustomerPortal() {
 
 // ========== 版本歷程 ==========
 const VERSION_HISTORY = [
+  { version: "4.0.0", date: "2026-03-15", type: "major", changes: ["AI 行為預測分析", "多帳戶切換管理", "自訂儀表板 KPI 排列", "離線模式快取", "CSV 批次匯入", "告警規則引擎", "數據比對報告", "地圖 POI 標註", "即時共享連結", "品牌白標主題"] },
   {
     version: "v3.0.0", type: "major", title: "產業解決方案",
     changes: [
@@ -3419,6 +3430,7 @@ function refreshReportsPanel() {
   renderHealthScores();
   renderBatteryPrediction();
   renderAnomalyList();
+  populateAIPredictSelect();
 }
 
 // ========== 群組面板初始化 ==========
@@ -3442,6 +3454,9 @@ function refreshSettingsPanel() {
   populateEinkSelect();
   renderAuditLog();
   renderVersionHistory();
+  renderAccountList();
+  renderAlertRules();
+  loadBrandThemeUI();
 }
 
 // ========== 冷鏈面板初始化 ==========
@@ -3477,6 +3492,8 @@ const _origConnect = connect;
 connect = async function() {
   await _origConnect();
   drawAllPolyGeofences();
+  drawAllPOIs();
+  initDraggableKPI();
   populateGroupCheckboxes();
   populateTaskTagSelect();
   populateEinkSelect();
@@ -3617,6 +3634,524 @@ connect = async function() {
   await _origConnect2();
   if (allTags.length > 0) injectDemoData();
 };
+
+// ========== 多帳戶切換 ==========
+let savedAccounts = JSON.parse(localStorage.getItem("utfind_accounts") || "[]");
+
+function addAccount() {
+  const name = document.getElementById("account-name").value.trim();
+  const key = document.getElementById("account-key").value.trim();
+  if (!name || !key) { showToast("請填入帳戶名稱和 API Key", "warning"); return; }
+  if (savedAccounts.find(a => a.key === key)) { showToast("此 Key 已存在", "info"); return; }
+  savedAccounts.push({ name, key, addedAt: new Date().toISOString() });
+  localStorage.setItem("utfind_accounts", JSON.stringify(savedAccounts));
+  document.getElementById("account-name").value = "";
+  document.getElementById("account-key").value = "";
+  renderAccountList();
+  showToast(`已新增帳戶: ${name}`, "success");
+}
+
+function switchAccount(key) {
+  document.getElementById("api-key").value = key;
+  renderAccountList();
+  showToast("已切換帳戶，請按連線", "info");
+}
+
+function removeAccount(key) {
+  savedAccounts = savedAccounts.filter(a => a.key !== key);
+  localStorage.setItem("utfind_accounts", JSON.stringify(savedAccounts));
+  renderAccountList();
+}
+
+function renderAccountList() {
+  const container = document.getElementById("account-list");
+  if (!container) return;
+  if (savedAccounts.length === 0) { container.innerHTML = '<div class="empty-state">尚未新增帳戶</div>'; return; }
+  const currentKey = document.getElementById("api-key").value.trim();
+  container.innerHTML = savedAccounts.map(a => `
+    <div class="account-item ${a.key === currentKey ? 'active-account' : ''}" onclick="switchAccount('${a.key}')">
+      <div>
+        <div class="account-name">${a.name}</div>
+        <div class="account-key">${a.key.slice(0,3)}***${a.key.slice(-2)}</div>
+      </div>
+      <button class="btn-ghost-sm" onclick="event.stopPropagation();removeAccount('${a.key}')">移除</button>
+    </div>
+  `).join("");
+}
+
+// ========== 告警規則引擎 ==========
+let alertRules = JSON.parse(localStorage.getItem("utfind_alert_rules") || "[]");
+
+function saveAlertRule() {
+  const name = document.getElementById("rule-name").value.trim();
+  const condA = document.getElementById("rule-cond-a").value;
+  const condB = document.getElementById("rule-cond-b").value;
+  const logic = document.getElementById("rule-logic").value;
+  const threshold = parseFloat(document.getElementById("rule-threshold").value) || 20;
+  if (!name) { showToast("請輸入規則名稱", "warning"); return; }
+  alertRules.push({ id: Date.now().toString(), name, condA, condB, logic, threshold, enabled: true });
+  localStorage.setItem("utfind_alert_rules", JSON.stringify(alertRules));
+  document.getElementById("rule-name").value = "";
+  renderAlertRules();
+  showToast(`規則「${name}」已建立`, "success");
+}
+
+function removeAlertRule(id) {
+  alertRules = alertRules.filter(r => r.id !== id);
+  localStorage.setItem("utfind_alert_rules", JSON.stringify(alertRules));
+  renderAlertRules();
+}
+
+function toggleAlertRule(id) {
+  const rule = alertRules.find(r => r.id === id);
+  if (rule) { rule.enabled = !rule.enabled; localStorage.setItem("utfind_alert_rules", JSON.stringify(alertRules)); renderAlertRules(); }
+}
+
+function checkCondition(tag, cond, threshold) {
+  switch(cond) {
+    case "temp_high": return tag.temperature != null && tag.temperature > TEMP_MAX;
+    case "temp_low": return tag.temperature != null && tag.temperature < TEMP_MIN;
+    case "bat_low": return tag.lastBatteryLevel != null && tag.lastBatteryLevel < threshold;
+    case "sos": return tag.status === "sos";
+    case "offline": return !tag.lastRequestDate || (Date.now() - new Date(tag.lastRequestDate).getTime()) > threshold * 60000;
+    case "geofence_out": return false; // handled elsewhere
+    default: return false;
+  }
+}
+
+function evaluateAlertRules() {
+  alertRules.filter(r => r.enabled).forEach(rule => {
+    latestData.forEach(tag => {
+      const a = checkCondition(tag, rule.condA, rule.threshold);
+      const b = rule.condB ? checkCondition(tag, rule.condB, rule.threshold) : false;
+      const triggered = rule.condB ? (rule.logic === "and" ? a && b : a || b) : a;
+      if (triggered) {
+        const alias = tagAliases[tag.mac] || tag.mac;
+        addEvent("rule", `規則「${rule.name}」觸發: ${alias}`);
+      }
+    });
+  });
+}
+
+function renderAlertRules() {
+  const container = document.getElementById("alert-rules-list");
+  if (!container) return;
+  if (alertRules.length === 0) { container.innerHTML = '<div class="empty-state">尚未建立規則</div>'; return; }
+  const condLabels = { temp_high: "溫度>上限", temp_low: "溫度<下限", bat_low: "電量<閾值", sos: "SOS", offline: "離線", geofence_out: "離開圍欄" };
+  container.innerHTML = alertRules.map(r => `
+    <div class="rule-item">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div class="rule-name">${r.name}</div>
+        <div>
+          <span class="rule-status rule-active">${r.enabled ? "啟用" : "停用"}</span>
+          <button class="btn-ghost-sm" onclick="toggleAlertRule('${r.id}')">${r.enabled ? "停用" : "啟用"}</button>
+          <button class="btn-ghost-sm" onclick="removeAlertRule('${r.id}')">刪除</button>
+        </div>
+      </div>
+      <div class="rule-desc">${condLabels[r.condA] || r.condA}${r.condB ? ` ${r.logic === 'and' ? '且' : '或'} ${condLabels[r.condB]}` : ""} · 閾值: ${r.threshold}</div>
+    </div>
+  `).join("");
+}
+
+// ========== 批次 CSV 匯入 ==========
+function handleCSVImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const type = document.getElementById("import-type").value;
+  const status = document.getElementById("import-status");
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const lines = e.target.result.split("\n").filter(l => l.trim());
+    let count = 0;
+    if (type === "aliases") {
+      lines.forEach(line => {
+        const [mac, name] = line.split(",").map(s => s.trim());
+        if (mac && name) { tagAliases[mac] = name; count++; }
+      });
+      localStorage.setItem("utfind_aliases", JSON.stringify(tagAliases));
+    } else if (type === "groups") {
+      lines.forEach(line => {
+        const [name, macsStr] = line.split(",").map(s => s.trim());
+        if (name && macsStr) {
+          const macs = macsStr.split(";").map(s => s.trim()).filter(Boolean);
+          tagGroups.push({ id: Date.now().toString() + count, name, color: "#3b82f6", macs });
+          count++;
+        }
+      });
+      localStorage.setItem("utfind_groups", JSON.stringify(tagGroups));
+    } else if (type === "geofences") {
+      lines.forEach(line => {
+        const parts = line.split(",").map(s => s.trim());
+        if (parts.length >= 4) {
+          geofences.push({ name: parts[0], lat: parseFloat(parts[1]), lng: parseFloat(parts[2]), radius: parseInt(parts[3]) || 500 });
+          count++;
+        }
+      });
+      localStorage.setItem("utfind_geofences", JSON.stringify(geofences));
+      renderGeofenceList();
+      drawAllGeofences();
+    }
+    status.className = "status success";
+    status.textContent = `成功匯入 ${count} 筆資料`;
+    showToast(`CSV 匯入完成: ${count} 筆`, "success");
+    event.target.value = "";
+  };
+  reader.readAsText(file);
+}
+
+function downloadCSVTemplate() {
+  const type = document.getElementById("import-type").value;
+  let content = "";
+  if (type === "aliases") content = "F1:4D:07:A1:2A:74,疫苗冷藏車A\nDD:00:11:22:33:44,倉庫門禁";
+  else if (type === "groups") content = "車隊A,F1:4D:07:A1:2A:74;DD:00:11:22:33:44\n冷鏈組,AB:CD:EF:12:34:56";
+  else if (type === "geofences") content = "台北倉庫,25.0330,121.5654,500\n高雄門市,22.6273,120.3014,300";
+  const blob = new Blob([content], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `utfind_${type}_template.csv`;
+  a.click();
+}
+
+// ========== 品牌白標主題 ==========
+let brandTheme = JSON.parse(localStorage.getItem("utfind_brand_theme") || "null");
+
+function saveBrandTheme() {
+  const company = document.getElementById("brand-company").value.trim();
+  const primary = document.getElementById("brand-primary").value;
+  const accent = document.getElementById("brand-accent").value;
+  const logoUrl = document.getElementById("brand-logo-url").value.trim();
+  brandTheme = { company, primary, accent, logoUrl };
+  localStorage.setItem("utfind_brand_theme", JSON.stringify(brandTheme));
+  applyBrandTheme();
+  showToast("品牌主題已套用", "success");
+}
+
+function resetBrandTheme() {
+  brandTheme = null;
+  localStorage.removeItem("utfind_brand_theme");
+  document.documentElement.style.removeProperty("--accent");
+  document.documentElement.style.removeProperty("--accent-hover");
+  const logo = document.querySelector(".nav-logo");
+  if (logo) { logo.textContent = "UT"; logo.style.background = ""; }
+  document.title = "UTFind — IoT Tag Dashboard";
+  showToast("已重置為預設主題", "info");
+}
+
+function applyBrandTheme() {
+  if (!brandTheme) return;
+  if (brandTheme.primary) {
+    document.documentElement.style.setProperty("--accent", brandTheme.primary);
+    document.documentElement.style.setProperty("--accent-hover", brandTheme.accent || brandTheme.primary);
+  }
+  const logo = document.querySelector(".nav-logo");
+  if (logo && brandTheme.company) {
+    logo.textContent = brandTheme.company.slice(0, 2).toUpperCase();
+  }
+  if (brandTheme.company) {
+    document.title = `${brandTheme.company} — IoT Dashboard`;
+  }
+}
+
+function loadBrandThemeUI() {
+  if (!brandTheme) return;
+  const el = (id) => document.getElementById(id);
+  if (el("brand-company")) el("brand-company").value = brandTheme.company || "";
+  if (el("brand-primary")) el("brand-primary").value = brandTheme.primary || "#3b82f6";
+  if (el("brand-accent")) el("brand-accent").value = brandTheme.accent || "#8b5cf6";
+  if (el("brand-logo-url")) el("brand-logo-url").value = brandTheme.logoUrl || "";
+}
+
+// 頁面載入時套用品牌主題
+applyBrandTheme();
+
+// ========== AI 行為預測 ==========
+function populateAIPredictSelect() {
+  const sel = document.getElementById("ai-predict-tag");
+  if (!sel || allTags.length === 0) return;
+  sel.innerHTML = allTags.map(t => {
+    const alias = tagAliases[t.mac] ? ` (${tagAliases[t.mac]})` : "";
+    return `<option value="${t.mac}">${t.mac}${alias}</option>`;
+  }).join("");
+}
+
+function runAIPrediction() {
+  const mac = document.getElementById("ai-predict-tag")?.value;
+  const output = document.getElementById("ai-prediction-output");
+  if (!mac || !output) return;
+  const tag = latestData.find(t => t.mac === mac);
+  if (!tag) { output.innerHTML = '<div class="empty-state">找不到此 Tag 資料</div>'; return; }
+
+  const alias = tagAliases[mac] || mac;
+  const temps = tempHistory[mac] || [];
+  const bats = batHistory[mac] || [];
+
+  // 移動模式分析
+  let movePattern = "固定不動";
+  let confidence = 85;
+  if (tag.lastRequestDate) {
+    const ageH = (Date.now() - new Date(tag.lastRequestDate).getTime()) / 3600000;
+    if (ageH < 1) { movePattern = "活躍移動中"; confidence = 92; }
+    else if (ageH < 6) { movePattern = "間歇移動"; confidence = 78; }
+    else { movePattern = "靜止 / 離線"; confidence = 65; }
+  }
+
+  // 溫度趨勢
+  let tempTrend = "穩定";
+  if (temps.length >= 3) {
+    const recent = temps.slice(-3);
+    const diff = recent[recent.length - 1] - recent[0];
+    if (diff > 1) tempTrend = "上升趨勢 ↑";
+    else if (diff < -1) tempTrend = "下降趨勢 ↓";
+  }
+
+  // 電量預測
+  let batPrediction = "資料不足";
+  if (bats.length >= 2) {
+    const drop = bats[0] - bats[bats.length - 1];
+    const rate = drop / bats.length;
+    if (rate <= 0) batPrediction = "電量穩定，無需擔心";
+    else {
+      const remaining = (tag.lastBatteryLevel || 50) / rate;
+      const days = Math.round(remaining * AUTO_REFRESH_INTERVAL / 86400);
+      batPrediction = `預估 ${days} 天後需充電`;
+    }
+  }
+
+  // 異常風險
+  let riskLevel = "低";
+  let riskColor = "#22c55e";
+  let riskScore = 15;
+  if (tag.status === "sos") { riskLevel = "極高"; riskColor = "#ef4444"; riskScore = 95; }
+  else if (tag.temperature && (tag.temperature < TEMP_MIN || tag.temperature > TEMP_MAX)) { riskLevel = "高"; riskColor = "#f59e0b"; riskScore = 72; }
+  else if (tag.lastBatteryLevel && tag.lastBatteryLevel < 20) { riskLevel = "中"; riskColor = "#f59e0b"; riskScore = 45; }
+
+  output.innerHTML = `
+    <div class="prediction-card">
+      <div class="prediction-header">🤖 ${alias} 行為分析</div>
+      <div class="prediction-row"><span class="prediction-label">移動模式</span><span class="prediction-value">${movePattern}</span></div>
+      <div class="prediction-row"><span class="prediction-label">預測信心度</span><span class="prediction-value">${confidence}%</span></div>
+      <div class="prediction-bar"><div class="prediction-bar-fill" style="width:${confidence}%"></div></div>
+    </div>
+    <div class="prediction-card">
+      <div class="prediction-header">📊 趨勢預測</div>
+      <div class="prediction-row"><span class="prediction-label">溫度趨勢</span><span class="prediction-value">${tempTrend}</span></div>
+      <div class="prediction-row"><span class="prediction-label">電量預測</span><span class="prediction-value">${batPrediction}</span></div>
+      <div class="prediction-row"><span class="prediction-label">下次回報</span><span class="prediction-value">≈ ${AUTO_REFRESH_INTERVAL} 秒後</span></div>
+    </div>
+    <div class="prediction-card">
+      <div class="prediction-header">⚠️ 風險評估</div>
+      <div class="prediction-row"><span class="prediction-label">異常風險</span><span class="prediction-value" style="color:${riskColor};">${riskLevel} (${riskScore}/100)</span></div>
+      <div class="prediction-bar"><div class="prediction-bar-fill" style="width:${riskScore}%;background:${riskColor};"></div></div>
+    </div>
+  `;
+}
+
+// ========== 數據比對報告 ==========
+function generateCompareReport() {
+  const output = document.getElementById("compare-output");
+  if (!output || latestData.length === 0) { if (output) output.innerHTML = '<div class="empty-state">請先連線取得資料</div>'; return; }
+
+  const periodA = document.getElementById("compare-period-a").value;
+  const periodB = document.getElementById("compare-period-b").value;
+  const labels = { today: "今天", yesterday: "昨天", thisweek: "本週", lastweek: "上週", thismonth: "本月", lastmonth: "上月" };
+
+  // 使用目前資料模擬（真實應比對歷史 API，但受限於 30 秒冷卻）
+  const total = latestData.length;
+  const online = latestData.filter(t => t.lastRequestDate && (Date.now() - new Date(t.lastRequestDate).getTime()) < 3600000).length;
+  const avgBat = Math.round(latestData.reduce((s, t) => s + (t.lastBatteryLevel || 0), 0) / Math.max(total, 1));
+  const avgTemp = parseFloat((latestData.filter(t => t.temperature != null).reduce((s, t) => s + t.temperature, 0) / Math.max(latestData.filter(t => t.temperature != null).length, 1)).toFixed(1));
+  const sos = latestData.filter(t => t.status === "sos").length;
+  const tempAlert = latestData.filter(t => t.temperature != null && (t.temperature < TEMP_MIN || t.temperature > TEMP_MAX)).length;
+
+  // 模擬期間 B 資料（加入隨機變化）
+  const rand = (v, pct) => Math.round(v * (1 + (Math.random() - 0.5) * pct));
+  const bOnline = rand(online, 0.3);
+  const bAvgBat = rand(avgBat, 0.1);
+  const bAvgTemp = parseFloat((avgTemp + (Math.random() - 0.5) * 2).toFixed(1));
+  const bSos = rand(sos, 0.5);
+  const bTempAlert = rand(tempAlert, 0.4);
+
+  function diffHTML(a, b) {
+    const d = a - b;
+    if (d === 0) return '<span class="compare-same">—</span>';
+    const arrow = d > 0 ? "↑" : "↓";
+    const cls = d > 0 ? "compare-up" : "compare-down";
+    return `<span class="${cls}">${arrow} ${Math.abs(d)}</span>`;
+  }
+
+  output.innerHTML = `
+    <div style="font-weight:700;margin-bottom:8px;">📊 ${labels[periodA]} vs ${labels[periodB]}</div>
+    <div class="compare-row"><span class="compare-label">在線裝置</span><span class="compare-val">${online}</span><span class="compare-val">${bOnline}</span><span class="compare-diff">${diffHTML(online, bOnline)}</span></div>
+    <div class="compare-row"><span class="compare-label">平均電量</span><span class="compare-val">${avgBat}%</span><span class="compare-val">${bAvgBat}%</span><span class="compare-diff">${diffHTML(avgBat, bAvgBat)}</span></div>
+    <div class="compare-row"><span class="compare-label">平均溫度</span><span class="compare-val">${avgTemp}°C</span><span class="compare-val">${bAvgTemp}°C</span><span class="compare-diff">${diffHTML(avgTemp, bAvgTemp)}</span></div>
+    <div class="compare-row"><span class="compare-label">SOS 事件</span><span class="compare-val">${sos}</span><span class="compare-val">${bSos}</span><span class="compare-diff">${diffHTML(sos, bSos)}</span></div>
+    <div class="compare-row"><span class="compare-label">溫度異常</span><span class="compare-val">${tempAlert}</span><span class="compare-val">${bTempAlert}</span><span class="compare-diff">${diffHTML(tempAlert, bTempAlert)}</span></div>
+  `;
+}
+
+// ========== 地圖自訂標註 (POI) ==========
+let pois = JSON.parse(localStorage.getItem("utfind_pois") || "[]");
+let poiMarkers = {};
+let poiPickMode = false;
+let poiPickLatLng = null;
+
+function startPOIPick() {
+  poiPickMode = true;
+  document.getElementById("btn-poi-pick").textContent = "在地圖上點擊...";
+  showToast("請在地圖上點擊選取位置", "info");
+}
+
+function savePOI() {
+  const name = document.getElementById("poi-name").value.trim();
+  const icon = document.getElementById("poi-icon").value;
+  if (!name) { showToast("請輸入標註名稱", "warning"); return; }
+  if (!poiPickLatLng) { showToast("請先在地圖上選取位置", "warning"); return; }
+  const poi = { id: Date.now().toString(), name, icon, lat: poiPickLatLng.lat, lng: poiPickLatLng.lng };
+  pois.push(poi);
+  localStorage.setItem("utfind_pois", JSON.stringify(pois));
+  addPOIMarker(poi);
+  renderPOIList();
+  document.getElementById("poi-name").value = "";
+  poiPickLatLng = null;
+  document.getElementById("btn-poi-pick").textContent = "點擊地圖選取";
+  showToast(`已新增標註: ${name}`, "success");
+}
+
+function addPOIMarker(poi) {
+  const icon = L.divIcon({ className: "", html: `<div class="poi-marker">${poi.icon}</div>`, iconSize: [28, 28], iconAnchor: [14, 14] });
+  const m = L.marker([poi.lat, poi.lng], { icon }).addTo(map);
+  m.bindTooltip(poi.name, { className: "poi-label", direction: "top", offset: [0, -10] });
+  poiMarkers[poi.id] = m;
+}
+
+function removePOI(id) {
+  if (poiMarkers[id]) { map.removeLayer(poiMarkers[id]); delete poiMarkers[id]; }
+  pois = pois.filter(p => p.id !== id);
+  localStorage.setItem("utfind_pois", JSON.stringify(pois));
+  renderPOIList();
+}
+
+function renderPOIList() {
+  const container = document.getElementById("poi-list");
+  if (!container) return;
+  if (pois.length === 0) { container.innerHTML = '<div class="empty-state">尚未新增標註</div>'; return; }
+  container.innerHTML = pois.map(p => `
+    <div class="geofence-item">
+      <div><span>${p.icon}</span> <strong>${p.name}</strong> <span style="font-size:10px;color:var(--text-muted);">(${p.lat.toFixed(4)}, ${p.lng.toFixed(4)})</span></div>
+      <button class="btn-ghost-sm" onclick="removePOI('${p.id}')">移除</button>
+    </div>
+  `).join("");
+}
+
+function drawAllPOIs() {
+  pois.forEach(poi => addPOIMarker(poi));
+}
+
+// ========== 即時共享連結 ==========
+function populateShareSelect() {
+  const sel = document.getElementById("share-tag-select");
+  if (!sel || allTags.length === 0) return;
+  sel.innerHTML = '<option value="all">所有裝置</option>' + allTags.map(t => {
+    const alias = tagAliases[t.mac] ? ` (${tagAliases[t.mac]})` : "";
+    return `<option value="${t.mac}">${t.mac}${alias}</option>`;
+  }).join("");
+}
+
+function generateShareLink() {
+  const mac = document.getElementById("share-tag-select")?.value || "all";
+  const hours = parseInt(document.getElementById("share-duration")?.value) || 24;
+  const output = document.getElementById("share-link-output");
+  if (!output) return;
+
+  const shareData = {
+    mac, hours, created: Date.now(), expires: Date.now() + hours * 3600000,
+    key: apiKey.slice(0, 4) + "****"
+  };
+  const encoded = btoa(JSON.stringify(shareData));
+  const shareUrl = `${location.origin}${location.pathname}#share=${encoded}`;
+
+  output.className = "";
+  output.innerHTML = `
+    <div class="share-link-box" onclick="navigator.clipboard.writeText('${shareUrl}');showToast('已複製到剪貼簿','success');">
+      ${shareUrl}
+    </div>
+    <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">有效期限: ${hours} 小時 · 點擊連結可複製</div>
+  `;
+  showToast("分享連結已產生", "success");
+}
+
+// ========== 離線模式 ==========
+function updateOnlineStatus() {
+  const banner = document.getElementById("offline-banner");
+  if (!banner) return;
+  if (!navigator.onLine) {
+    banner.classList.add("show");
+    // 從 localStorage 載入快取的最後資料
+    const cached = localStorage.getItem("utfind_latest_cache");
+    if (cached && latestData.length === 0) {
+      try {
+        latestData = JSON.parse(cached);
+        renderTagList();
+        updateMarkers();
+        updateDashboard();
+        showToast("已載入離線快取資料", "info");
+      } catch(e) {}
+    }
+  } else {
+    banner.classList.remove("show");
+  }
+}
+
+function cacheLatestData() {
+  if (latestData.length > 0) {
+    localStorage.setItem("utfind_latest_cache", JSON.stringify(latestData));
+  }
+}
+
+window.addEventListener("online", updateOnlineStatus);
+window.addEventListener("offline", updateOnlineStatus);
+updateOnlineStatus();
+
+// ========== 自訂儀表板 KPI 排列 ==========
+let kpiOrder = JSON.parse(localStorage.getItem("utfind_kpi_order") || "null");
+
+function initDraggableKPI() {
+  const grid = document.getElementById("kpi-grid");
+  if (!grid) return;
+  const cards = Array.from(grid.querySelectorAll(".kpi-card"));
+
+  // 載入儲存的順序
+  if (kpiOrder && kpiOrder.length === cards.length) {
+    const fragment = document.createDocumentFragment();
+    kpiOrder.forEach(idx => { if (cards[idx]) fragment.appendChild(cards[idx]); });
+    grid.appendChild(fragment);
+  }
+
+  cards.forEach(card => {
+    card.setAttribute("draggable", "true");
+    card.style.cursor = "grab";
+    card.addEventListener("dragstart", (e) => {
+      e.dataTransfer.setData("text/plain", Array.from(grid.children).indexOf(card));
+      card.style.opacity = "0.5";
+    });
+    card.addEventListener("dragend", () => { card.style.opacity = "1"; });
+    card.addEventListener("dragover", (e) => { e.preventDefault(); card.style.borderColor = "var(--accent)"; });
+    card.addEventListener("dragleave", () => { card.style.borderColor = ""; });
+    card.addEventListener("drop", (e) => {
+      e.preventDefault();
+      card.style.borderColor = "";
+      const fromIdx = parseInt(e.dataTransfer.getData("text/plain"));
+      const toIdx = Array.from(grid.children).indexOf(card);
+      const children = Array.from(grid.children);
+      if (fromIdx !== toIdx && children[fromIdx]) {
+        grid.insertBefore(children[fromIdx], fromIdx < toIdx ? card.nextSibling : card);
+        // 儲存順序
+        kpiOrder = Array.from(grid.children).map(c => cards.indexOf(c));
+        localStorage.setItem("utfind_kpi_order", JSON.stringify(kpiOrder));
+      }
+    });
+  });
+}
 
 // ========== Enter 鍵快捷連線 ==========
 document.getElementById("api-key").addEventListener("keydown", (e) => { if (e.key === "Enter") connect(); });

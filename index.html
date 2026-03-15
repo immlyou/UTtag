@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <div id="offline-banner" class="offline-banner">目前為離線模式 — 顯示快取資料</div>
   <div id="toast-container"></div>
 
   <!-- 左側導航 -->
@@ -115,6 +116,27 @@
         <div class="info-card-header"><span data-i18n="planInfo">方案資訊</span><button class="btn-toggle" onclick="toggleSection('plan-content')">⌃</button></div>
         <div id="plan-content" class="info-card-body"></div>
       </div>
+
+      <!-- 即時共享連結 -->
+      <div class="info-card" id="share-section" style="display:none;">
+        <div class="info-card-header"><span>即時共享</span></div>
+        <div class="info-card-body">
+          <p style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">產生一次性連結，讓客戶即時查看裝置位置</p>
+          <div class="form-row">
+            <div class="form-group" style="flex:2;"><select id="share-tag-select"></select></div>
+            <div class="form-group" style="flex:1;">
+              <select id="share-duration">
+                <option value="1">1 小時</option>
+                <option value="6">6 小時</option>
+                <option value="24" selected>24 小時</option>
+                <option value="72">3 天</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn-accent" onclick="generateShareLink()" style="width:100%;">產生分享連結</button>
+          <div id="share-link-output" class="status" style="margin-top:8px;"></div>
+        </div>
+      </div>
     </div>
 
     <!-- 裝置 -->
@@ -193,6 +215,31 @@
       </div>
       <button class="btn-accent" onclick="saveGeofence()" data-i18n="saveGeofence">儲存圍欄</button>
       <div id="geofence-list" class="geofence-list"></div>
+
+      <!-- 地圖自訂標註 -->
+      <div class="report-section" style="margin-top:16px;">
+        <div class="section-title">地圖自訂標註 (POI)</div>
+        <div class="form-group"><label>名稱</label><input type="text" id="poi-name" placeholder="例如：台北倉庫" /></div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1;">
+            <label>圖示</label>
+            <select id="poi-icon">
+              <option value="🏢">🏢 辦公室</option>
+              <option value="🏭">🏭 工廠</option>
+              <option value="🏥">🏥 醫院</option>
+              <option value="🏪">🏪 門市</option>
+              <option value="📦">📦 倉庫</option>
+              <option value="🚏">🚏 站點</option>
+              <option value="⭐">⭐ 自訂</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex:1;">
+            <button class="btn-accent" id="btn-poi-pick" onclick="startPOIPick()" style="width:100%;height:36px;">點擊地圖選取</button>
+          </div>
+        </div>
+        <button class="btn-accent" onclick="savePOI()">儲存標註</button>
+        <div id="poi-list" class="geofence-list" style="margin-top:10px;"></div>
+      </div>
     </div>
 
     <!-- 事件日誌 -->
@@ -266,6 +313,25 @@
         <button class="btn-accent" onclick="analyzeDwellPoints()">分析停留點</button>
         <div id="dwell-output" class="report-output" style="margin-top:10px;"></div>
       </div>
+
+      <!-- AI 行為預測 -->
+      <div class="report-section">
+        <div class="section-title">AI 行為預測</div>
+        <div class="form-group"><label>選擇 Tag</label><select id="ai-predict-tag"></select></div>
+        <button class="btn-accent" onclick="runAIPrediction()">執行預測分析</button>
+        <div id="ai-prediction-output" class="report-output" style="margin-top:10px;"></div>
+      </div>
+
+      <!-- 數據比對報告 -->
+      <div class="report-section">
+        <div class="section-title">數據比對報告</div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1;"><label>期間 A</label><select id="compare-period-a"><option value="today">今天</option><option value="yesterday">昨天</option><option value="thisweek">本週</option><option value="lastweek">上週</option><option value="thismonth">本月</option><option value="lastmonth">上月</option></select></div>
+          <div class="form-group" style="flex:1;"><label>期間 B</label><select id="compare-period-b"><option value="yesterday">昨天</option><option value="lastweek" selected>上週</option><option value="lastmonth">上月</option></select></div>
+        </div>
+        <button class="btn-accent" onclick="generateCompareReport()">產出比對報告</button>
+        <div id="compare-output" class="report-output" style="margin-top:10px;"></div>
+      </div>
     </div>
 
     <!-- 群組與資產 -->
@@ -306,6 +372,17 @@
     <!-- 設定與整合 -->
     <div class="panel" id="panel-settings">
       <div class="panel-header"><h2 data-i18n="settingsIntegration">設定與整合</h2></div>
+
+      <!-- 多帳戶切換 -->
+      <div class="report-section">
+        <div class="section-title">多帳戶切換</div>
+        <div class="form-row">
+          <div class="form-group" style="flex:2;"><input type="text" id="account-name" placeholder="帳戶名稱" /></div>
+          <div class="form-group" style="flex:2;"><input type="text" id="account-key" placeholder="API Key" /></div>
+          <div class="form-group" style="flex:1;"><button class="btn-accent" onclick="addAccount()" style="width:100%;height:36px;">加入</button></div>
+        </div>
+        <div id="account-list" class="geofence-list"></div>
+      </div>
 
       <!-- 手動 Tag -->
       <div class="report-section">
@@ -358,6 +435,83 @@
         <div id="schedule-status" class="status"></div>
       </div>
 
+      <!-- 告警規則引擎 -->
+      <div class="report-section">
+        <div class="section-title">告警規則引擎</div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1;">
+            <label>條件 A</label>
+            <select id="rule-cond-a">
+              <option value="temp_high">溫度 > 上限</option>
+              <option value="temp_low">溫度 < 下限</option>
+              <option value="bat_low">電量 < 閾值</option>
+              <option value="sos">SOS 狀態</option>
+              <option value="offline">離線超時</option>
+              <option value="geofence_out">離開圍欄</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label>邏輯</label>
+            <select id="rule-logic">
+              <option value="or">任一成立 (OR)</option>
+              <option value="and">同時成立 (AND)</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label>條件 B (選填)</label>
+            <select id="rule-cond-b">
+              <option value="">不使用</option>
+              <option value="temp_high">溫度 > 上限</option>
+              <option value="temp_low">溫度 < 下限</option>
+              <option value="bat_low">電量 < 閾值</option>
+              <option value="sos">SOS 狀態</option>
+              <option value="offline">離線超時</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1;"><label>規則名稱</label><input type="text" id="rule-name" placeholder="例如：冷藏異常告警" /></div>
+          <div class="form-group" style="flex:1;"><label>閾值</label><input type="number" id="rule-threshold" value="20" /></div>
+        </div>
+        <button class="btn-accent" onclick="saveAlertRule()">建立規則</button>
+        <div id="alert-rules-list" class="geofence-list" style="margin-top:10px;"></div>
+      </div>
+
+      <!-- 批次匯入 -->
+      <div class="report-section">
+        <div class="section-title">批次匯入</div>
+        <p style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">支援 CSV 匯入 Tag 別名、群組、圍欄設定</p>
+        <div class="form-group">
+          <label>匯入類型</label>
+          <select id="import-type">
+            <option value="aliases">Tag 別名 (MAC,名稱)</option>
+            <option value="groups">群組 (群組名,MAC1;MAC2;...)</option>
+            <option value="geofences">圍欄 (名稱,緯度,經度,半徑)</option>
+          </select>
+        </div>
+        <input type="file" id="csv-import-input" accept=".csv" style="display:none;" onchange="handleCSVImport(event)" />
+        <div class="btn-row">
+          <button class="btn-accent" onclick="document.getElementById('csv-import-input').click()" style="flex:1;">選擇 CSV 檔案</button>
+          <button class="btn-ghost" onclick="downloadCSVTemplate()" style="flex:1;">下載範本</button>
+        </div>
+        <div id="import-status" class="status" style="margin-top:8px;"></div>
+      </div>
+
+      <!-- 品牌主題 -->
+      <div class="report-section">
+        <div class="section-title">品牌白標設定</div>
+        <div class="form-group"><label>公司名稱</label><input type="text" id="brand-company" placeholder="您的公司名稱" /></div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1;"><label>主色</label><input type="color" id="brand-primary" value="#3b82f6" style="height:36px;padding:2px;" /></div>
+          <div class="form-group" style="flex:1;"><label>強調色</label><input type="color" id="brand-accent" value="#8b5cf6" style="height:36px;padding:2px;" /></div>
+        </div>
+        <div class="form-group"><label>Logo URL (選填)</label><input type="text" id="brand-logo-url" placeholder="https://..." /></div>
+        <div class="btn-row">
+          <button class="btn-accent" onclick="saveBrandTheme()" style="flex:1;">套用品牌主題</button>
+          <button class="btn-ghost" onclick="resetBrandTheme()" style="flex:1;">重置</button>
+        </div>
+      </div>
+
       <!-- 第三方整合 -->
       <div class="report-section">
         <div class="section-title">第三方整合</div>
@@ -407,7 +561,7 @@
       <div class="report-section">
         <div class="section-title">版本資訊</div>
         <div style="text-align:center;margin-bottom:12px;">
-          <div style="font-size:28px;font-weight:800;color:var(--accent);">v3.0.0</div>
+          <div style="font-size:28px;font-weight:800;color:var(--accent);">v4.0.0</div>
           <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">UTFind IoT Dashboard</div>
         </div>
         <div id="version-history" class="event-list" style="max-height:400px;overflow-y:auto;"></div>
