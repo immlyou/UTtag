@@ -830,6 +830,9 @@ button { cursor: pointer; border: none; font-weight: 600; transition: all 0.2s; 
   max-height: 300px;
   overflow-y: auto;
 }
+.report-output .stat-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.report-output .stat-label { color: var(--text-muted); }
+.report-output .stat-value { font-weight: 600; color: var(--text); font-family: "SF Mono", monospace; }
 
 /* ========== 健康評分 ========== */
 .health-card {
