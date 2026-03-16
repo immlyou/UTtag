@@ -1,12 +1,8 @@
 {
-  "buildCommand": "",
-  "installCommand": "",
-  "framework": null,
-  "outputDirectory": ".",
   "rewrites": [
     {
-      "source": "/api/:path*",
-      "destination": "https://utfind.api.beta.uttec.com.tw/api/:path*"
+      "source": "/api/v1/tags/:path*",
+      "destination": "https://utfind.api.beta.uttec.com.tw/api/v1/tags/:path*"
     }
   ],
   "headers": [
