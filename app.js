@@ -77,12 +77,12 @@
 // ================================================================
 const API_BASE = "/api/v1/tags";
 const PLAN_LIMITS = {
-  Basic:        { rateLimit: 30, maxTags: 100 },
-  Professional: { rateLimit: 15, maxTags: 500 },
+  Basic:        { rateLimit: 2, maxTags: 100 },
+  Professional: { rateLimit: 1, maxTags: 500 },
   Enterprise:   { rateLimit: null, maxTags: null },
 };
-const AUTO_REFRESH_INTERVAL = 120; // 加長到 2 分鐘，減少 API 呼叫
-const API_COOLDOWN = 31000; // 31 秒冷卻（Basic 方案 30 秒 + 1 秒緩衝）
+const AUTO_REFRESH_INTERVAL = 30; // 每 30 秒自動刷新（API 冷卻已解除）
+const API_COOLDOWN = 2000; // 2 秒緩衝（避免瞬間大量請求）
 let lastApiCallTime = 0; // 上次 API 呼叫的時間戳
 const TEMP_MIN = 2;
 const TEMP_MAX = 8;
@@ -412,7 +412,6 @@ async function connect() {
     document.getElementById("share-section").style.display = "block";
     populateShareSelect();
 
-    // 等待冷卻後再呼叫 /latest（/all 和 /latest 共用 30 秒冷卻）
     await fetchLatest();
     startAutoRefresh();
   } catch (err) {
