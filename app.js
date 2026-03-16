@@ -411,6 +411,9 @@ async function connect() {
     addEvent("connect", `已連線至 API，共 ${allTags.length} 個 Tag`);
     document.getElementById("share-section").style.display = "block";
     populateShareSelect();
+    populateSensorSelects();
+    loadSensorBindings();
+    updateSensorSourceBadge();
 
     await fetchLatest();
     startAutoRefresh();
@@ -422,15 +425,40 @@ async function connect() {
   }
 }
 
-// ---------- 模擬溫溼度（API 尚未提供） ----------
-function injectFakeSensorData(data) {
+// ---------- 感測器資料（優先 Supabase，fallback 模擬） ----------
+let sensorDataCache = {}; // mac -> { temperature, humidity, ... }
+let useFakeSensors = true; // Supabase 未設定時用假資料
+
+async function fetchSensorData(macs) {
+  try {
+    const resp = await fetch(`/api/sensors/latest?macs=${macs.join(",")}`);
+    if (!resp.ok) throw new Error("sensor API error");
+    const data = await resp.json();
+    if (data && data.length > 0) {
+      useFakeSensors = false;
+      data.forEach(s => { sensorDataCache[s.mac] = s; });
+      return;
+    }
+  } catch { /* Supabase 未設定，使用假資料 */ }
+  useFakeSensors = true;
+}
+
+function injectSensorData(data) {
   data.forEach((tag) => {
-    // 溫度：大部分在 2~8 度之間，偶爾超出範圍模擬異常
-    const base = TEMP_MIN + Math.random() * (TEMP_MAX - TEMP_MIN);
-    const drift = (Math.random() < 0.15) ? (Math.random() < 0.5 ? -2 : 2) : 0; // 15% 機率超標
-    tag.temperature = parseFloat((base + drift).toFixed(1));
-    // 濕度：40%~80%
-    tag.humidity = parseFloat((40 + Math.random() * 40).toFixed(1));
+    const cached = sensorDataCache[tag.mac];
+    if (!useFakeSensors && cached) {
+      tag.temperature = cached.temperature != null ? parseFloat(cached.temperature) : null;
+      tag.humidity = cached.humidity != null ? parseFloat(cached.humidity) : null;
+      tag.sensorSource = cached.source || "api";
+      tag.sensorTime = cached.created_at;
+    } else {
+      // Fallback: 模擬資料
+      const base = TEMP_MIN + Math.random() * (TEMP_MAX - TEMP_MIN);
+      const drift = (Math.random() < 0.15) ? (Math.random() < 0.5 ? -2 : 2) : 0;
+      tag.temperature = parseFloat((base + drift).toFixed(1));
+      tag.humidity = parseFloat((40 + Math.random() * 40).toFixed(1));
+      tag.sensorSource = "demo";
+    }
   });
 }
 
@@ -440,7 +468,9 @@ async function fetchLatest() {
   try {
     const result = await apiCall("latest", { macs });
     latestData = Array.isArray(result) ? result : [];
-    injectFakeSensorData(latestData);
+    await fetchSensorData(macs);
+    injectSensorData(latestData);
+    updateSensorSourceBadge();
     renderTagList();
     updateMarkers();
     updateDashboard();
@@ -4879,6 +4909,132 @@ function clearScenario() {
     status.textContent = "已清除所有情境資料";
   }
   showToast("已清除情境資料", "info");
+}
+
+// ================================================================
+//  感測器管理（前端）
+// ================================================================
+function populateSensorSelects() {
+  ["sensor-bind-mac", "sensor-push-mac"].forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel || allTags.length === 0) return;
+    sel.innerHTML = allTags.map(t => {
+      const alias = tagAliases[t.mac] ? ` (${tagAliases[t.mac]})` : "";
+      return `<option value="${t.mac}">${t.mac}${alias}</option>`;
+    }).join("");
+  });
+}
+
+async function addSensorBinding() {
+  const mac = document.getElementById("sensor-bind-mac")?.value;
+  const sensor_type = document.getElementById("sensor-bind-type")?.value;
+  const device_name = document.getElementById("sensor-bind-name")?.value;
+  const min_threshold = parseFloat(document.getElementById("sensor-bind-min")?.value);
+  const max_threshold = parseFloat(document.getElementById("sensor-bind-max")?.value);
+
+  if (!mac) { showToast("請選擇 Tag", "warning"); return; }
+
+  try {
+    const resp = await fetch("/api/sensors/bindings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mac, sensor_type, device_name, min_threshold, max_threshold }),
+    });
+    const data = await resp.json();
+    if (data.error) { showToast(data.error, "warning"); return; }
+    showToast("感測器綁定成功", "success");
+    loadSensorBindings();
+  } catch (e) {
+    showToast("綁定失敗：Supabase 尚未設定", "warning");
+  }
+}
+
+async function loadSensorBindings() {
+  const container = document.getElementById("sensor-binding-list");
+  if (!container) return;
+  try {
+    const resp = await fetch("/api/sensors/bindings");
+    const data = await resp.json();
+    if (!Array.isArray(data) || data.length === 0) {
+      container.innerHTML = '<div class="empty-state">尚未綁定感測器</div>';
+      return;
+    }
+    const typeLabels = { temperature: "溫度", humidity: "濕度", all: "溫溼度", pressure: "氣壓" };
+    container.innerHTML = data.map(b => `
+      <div class="geofence-item">
+        <div>
+          <strong>${b.device_name || b.mac}</strong>
+          <span style="font-size:11px;color:var(--text-muted);margin-left:6px;">${typeLabels[b.sensor_type] || b.sensor_type}</span>
+          <span style="font-size:11px;color:var(--text-muted);margin-left:6px;">${b.min_threshold ?? ""}~${b.max_threshold ?? ""}</span>
+        </div>
+        <button class="btn-ghost-sm" onclick="removeSensorBinding('${b.id}')">刪除</button>
+      </div>
+    `).join("");
+  } catch {
+    container.innerHTML = '<div class="empty-state">Supabase 尚未設定</div>';
+  }
+}
+
+async function removeSensorBinding(id) {
+  try {
+    await fetch("/api/sensors/bindings", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    loadSensorBindings();
+  } catch {}
+}
+
+async function pushSensorData() {
+  const mac = document.getElementById("sensor-push-mac")?.value;
+  const temperature = document.getElementById("sensor-push-temp")?.value;
+  const humidity = document.getElementById("sensor-push-humid")?.value;
+  const status = document.getElementById("sensor-push-status");
+
+  if (!mac) { showToast("請選擇 Tag", "warning"); return; }
+  if (!temperature && !humidity) { showToast("至少填入溫度或濕度", "warning"); return; }
+
+  try {
+    const resp = await fetch("/api/sensors/push", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mac,
+        temperature: temperature ? parseFloat(temperature) : null,
+        humidity: humidity ? parseFloat(humidity) : null,
+        source: "manual",
+      }),
+    });
+    const data = await resp.json();
+    if (data.error) { if (status) { status.className = "status error"; status.textContent = data.error; } return; }
+
+    if (status) {
+      status.className = "status success";
+      status.textContent = `已記錄！${data.alerts?.length ? `⚠️ ${data.alerts.length} 筆超閾值告警` : ""}`;
+    }
+
+    // 如果有告警推送到面板
+    (data.alerts || []).forEach(a => {
+      const alias = tagAliases[mac] || mac;
+      pushAlert("🌡️", `${alias} ${a.type.includes("high") ? "超過上限" : "低於下限"} (${a.value}，閾值 ${a.threshold})`, "danger");
+      playAlertSound(600, 2);
+    });
+
+    // 清空輸入
+    document.getElementById("sensor-push-temp").value = "";
+    document.getElementById("sensor-push-humid").value = "";
+  } catch (e) {
+    if (status) { status.className = "status error"; status.textContent = "推送失敗：Supabase 尚未設定"; }
+  }
+}
+
+// 更新感測器來源標記
+function updateSensorSourceBadge() {
+  const badge = document.getElementById("sensor-source-badge");
+  if (!badge) return;
+  badge.textContent = useFakeSensors ? "目前使用：模擬資料" : "目前使用：Supabase";
+  badge.style.color = useFakeSensors ? "var(--warning)" : "var(--success)";
 }
 
 // ---------- Enter 鍵快捷連線 ----------

@@ -446,6 +446,55 @@
         <div id="import-status" class="status" style="margin-top:8px;"></div>
       </div>
 
+      <!-- 感測器綁定 -->
+      <div class="report-section">
+        <div class="section-title">感測器綁定</div>
+        <p style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">綁定外接溫溼度感測器到 Tag，資料存入 Supabase</p>
+        <div class="form-row">
+          <div class="form-group" style="flex:2;">
+            <label>Tag</label>
+            <select id="sensor-bind-mac"></select>
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label>類型</label>
+            <select id="sensor-bind-type">
+              <option value="temperature">溫度</option>
+              <option value="humidity">濕度</option>
+              <option value="all">溫溼度</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1;"><label>感測器名稱</label><input type="text" id="sensor-bind-name" placeholder="例如：BLE 溫度計 #1" /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1;"><label>下限</label><input type="number" id="sensor-bind-min" value="2" step="0.1" /></div>
+          <div class="form-group" style="flex:1;"><label>上限</label><input type="number" id="sensor-bind-max" value="8" step="0.1" /></div>
+        </div>
+        <button class="btn-accent" onclick="addSensorBinding()">新增綁定</button>
+        <div id="sensor-binding-list" class="geofence-list" style="margin-top:10px;"></div>
+      </div>
+
+      <!-- 手動推送感測器資料 -->
+      <div class="report-section">
+        <div class="section-title">手動輸入感測資料</div>
+        <div class="form-row">
+          <div class="form-group" style="flex:2;">
+            <label>Tag</label>
+            <select id="sensor-push-mac"></select>
+          </div>
+          <div class="form-group" style="flex:1;"><label>溫度 (°C)</label><input type="number" id="sensor-push-temp" step="0.1" placeholder="25.0" /></div>
+          <div class="form-group" style="flex:1;"><label>濕度 (%)</label><input type="number" id="sensor-push-humid" step="0.1" placeholder="60.0" /></div>
+        </div>
+        <button class="btn-accent" onclick="pushSensorData()">送出</button>
+        <div id="sensor-push-status" class="status" style="margin-top:6px;"></div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:6px;">
+          來源標記：<span style="color:var(--success);">● Supabase</span>
+          <span style="color:var(--warning);margin-left:8px;">● 模擬資料</span>
+          <span id="sensor-source-badge" style="margin-left:8px;"></span>
+        </div>
+      </div>
+
       <!-- OTA 韌體更新 -->
       <div class="report-section">
         <div class="section-title">OTA 韌體更新</div>

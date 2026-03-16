@@ -86,7 +86,35 @@ INSERT INTO billing_tiers (tier, name, price_monthly, max_tags, max_keys, rate_l
   ('pro',        '專業版',   2990,  500,  20,  120,  50000,  '["dashboard","alerts","reports","geofence","api","webhook","coldchain"]'),
   ('enterprise', '企業版',   0,     NULL, NULL, NULL, NULL,   '["all"]');
 
+-- 感測器資料
+CREATE TABLE sensor_data (
+  id BIGSERIAL PRIMARY KEY,
+  mac TEXT NOT NULL,
+  temperature DECIMAL(5,2),
+  humidity DECIMAL(5,2),
+  pressure DECIMAL(7,2),
+  source TEXT DEFAULT 'manual' CHECK (source IN ('manual', 'ble', 'lora', 'api', 'demo')),
+  note TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 感測器綁定（哪個 MAC 有接哪些感測器）
+CREATE TABLE sensor_bindings (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  mac TEXT NOT NULL,
+  sensor_type TEXT NOT NULL CHECK (sensor_type IN ('temperature', 'humidity', 'pressure', 'all')),
+  device_name TEXT,
+  min_threshold DECIMAL(5,2),
+  max_threshold DECIMAL(5,2),
+  enabled BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
 -- 索引
+CREATE INDEX idx_sensor_data_mac ON sensor_data(mac);
+CREATE INDEX idx_sensor_data_created ON sensor_data(created_at);
+CREATE INDEX idx_sensor_data_mac_created ON sensor_data(mac, created_at DESC);
+CREATE INDEX idx_sensor_bindings_mac ON sensor_bindings(mac);
 CREATE INDEX idx_api_keys_key ON api_keys(key);
 CREATE INDEX idx_api_keys_client ON api_keys(client_id);
 CREATE INDEX idx_usage_logs_key ON usage_logs(api_key_id);
