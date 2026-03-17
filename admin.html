@@ -214,6 +214,95 @@
       color: var(--text-muted); font-size: 13px; text-decoration: none;
     }
     .back-link:hover { color: var(--accent); }
+
+    /* ===== Tag Detail ===== */
+    .tag-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 16px;
+    }
+    .tag-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px; cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tag-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+    .tag-card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .tag-card-mac { font-family: monospace; font-size: 14px; font-weight: 600; }
+    .tag-card-note { font-size: 12px; color: var(--text-muted); }
+    .tag-card-sensors {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    }
+    .sensor-item {
+      background: var(--bg-input); border-radius: var(--radius-sm);
+      padding: 10px 12px;
+    }
+    .sensor-item .s-label { font-size: 11px; color: var(--text-muted); }
+    .sensor-item .s-value { font-size: 20px; font-weight: 700; margin-top: 2px; }
+    .sensor-item .s-value.temp { color: var(--cyan); }
+    .sensor-item .s-value.humid { color: var(--accent); }
+    .sensor-item .s-value.cold { color: #60a5fa; }
+    .sensor-item .s-value.hot { color: var(--danger); }
+    .tag-card-time {
+      font-size: 11px; color: var(--text-muted); margin-top: 10px;
+      text-align: right;
+    }
+    .tag-detail-back {
+      display: inline-flex; align-items: center; gap: 6px;
+      color: var(--accent); font-size: 13px; cursor: pointer;
+      margin-bottom: 16px; background: none; border: none;
+    }
+    .tag-detail-back:hover { text-decoration: underline; }
+    .detail-header {
+      display: flex; align-items: center; gap: 16px; margin-bottom: 20px;
+    }
+    .detail-header h2 { font-size: 20px; }
+    .detail-header .badge { font-size: 13px; padding: 4px 12px; }
+    .detail-stats {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px; margin-bottom: 20px;
+    }
+    .detail-stat {
+      background: var(--bg-input); border-radius: var(--radius-sm);
+      padding: 14px;
+    }
+    .detail-stat .ds-label { font-size: 11px; color: var(--text-muted); }
+    .detail-stat .ds-value { font-size: 24px; font-weight: 700; margin-top: 2px; }
+    .chart-container {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px; margin-bottom: 20px;
+    }
+    .chart-container h3 { font-size: 14px; margin-bottom: 12px; }
+    .chart-canvas-wrap { position: relative; height: 220px; }
+    canvas { width: 100% !important; height: 100% !important; }
+    .binding-list {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;
+    }
+    .binding-tag {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--bg-input); border: 1px solid var(--border);
+      border-radius: 20px; padding: 6px 14px; font-size: 12px;
+    }
+    .binding-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+    }
+    .binding-dot.temperature { background: var(--cyan); }
+    .binding-dot.humidity { background: var(--accent); }
+    .binding-dot.pressure { background: var(--purple); }
+    .binding-dot.all { background: var(--success); }
+    .time-range-btns {
+      display: flex; gap: 6px; margin-bottom: 12px;
+    }
+    .time-range-btns button {
+      padding: 4px 12px; border-radius: var(--radius-sm); font-size: 12px;
+      border: 1px solid var(--border); background: var(--bg-input);
+      color: var(--text-muted); cursor: pointer;
+    }
+    .time-range-btns button.active {
+      background: var(--accent); color: #fff; border-color: var(--accent);
+    }
   </style>
 </head>
 <body>
@@ -256,6 +345,7 @@
     <div class="tab active" data-tab="overview" onclick="switchTab('overview')">總覽</div>
     <div class="tab" data-tab="clients" onclick="switchTab('clients')">客戶管理</div>
     <div class="tab" data-tab="keys" onclick="switchTab('keys')">API Keys</div>
+    <div class="tab" data-tab="tags" onclick="switchTab('tags')">Tag 裝置</div>
     <div class="tab" data-tab="usage" onclick="switchTab('usage')">用量統計</div>
   </div>
 
@@ -287,6 +377,25 @@
         <button class="btn btn-sm btn-primary" onclick="showModal('key')">+ 產生 Key</button>
       </div>
       <div id="keys-table"><div class="empty-state">載入中...</div></div>
+    </div>
+  </div>
+
+  <!-- Tags -->
+  <div class="content tab-content" id="tab-tags" style="display:none;">
+    <!-- Tag list view -->
+    <div id="tags-list-view">
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-header">
+          <h2>感測器裝置</h2>
+          <button class="btn btn-sm btn-outline" onclick="loadTags()">重新整理</button>
+        </div>
+      </div>
+      <div id="tags-grid" class="tag-grid"><div class="empty-state">載入中...</div></div>
+    </div>
+    <!-- Tag detail view -->
+    <div id="tag-detail-view" style="display:none;">
+      <button class="tag-detail-back" onclick="backToTagList()">← 返回裝置列表</button>
+      <div id="tag-detail-content"></div>
     </div>
   </div>
 
@@ -355,6 +464,18 @@
   </div>
 </div>
 
+<!-- ===== Client Detail Modal ===== -->
+<div class="modal-overlay" id="modal-client-detail">
+  <div class="modal" style="width:560px;max-height:80vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h2 id="cd-title">客戶詳情</h2>
+      <button class="btn btn-sm btn-outline" onclick="hideModal('client-detail')">關閉</button>
+    </div>
+    <div id="cd-content" style="margin-top:16px;"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 const API = '';
 let token = localStorage.getItem('admin_token');
@@ -435,6 +556,7 @@ function switchTab(name) {
   if (name === 'overview') loadOverview();
   if (name === 'clients') loadClients();
   if (name === 'keys') loadKeys();
+  if (name === 'tags') loadTags();
   if (name === 'usage') loadUsage();
 }
 
@@ -488,7 +610,7 @@ function renderClients() {
     return;
   }
   const rows = clientsCache.map(c => `
-    <tr>
+    <tr style="cursor:pointer;" onclick="viewClientDetail('${c.id}')">
       <td><strong>${esc(c.name)}</strong></td>
       <td>${esc(c.email)}</td>
       <td>${esc(c.company || '-')}</td>
@@ -636,6 +758,306 @@ async function loadUsage() {
     document.getElementById('usage-stats').innerHTML = '';
     document.getElementById('usage-daily').innerHTML = '<div class="empty-state">尚無用量紀錄</div>';
   }
+}
+
+// ===== Client Detail =====
+async function viewClientDetail(clientId) {
+  const client = clientsCache.find(c => c.id === clientId);
+  if (!client) return;
+
+  document.getElementById('cd-title').textContent = client.name;
+
+  // Load keys for this client
+  let keys = [];
+  try {
+    const data = await api(`/api/keys/list?client_id=${clientId}`);
+    keys = Array.isArray(data) ? data : (data.keys || []);
+  } catch {}
+
+  const keysHtml = keys.length
+    ? `<table style="margin-top:8px;">
+        <thead><tr><th>名稱</th><th>Key</th><th>狀態</th><th>日限額</th></tr></thead>
+        <tbody>${keys.map(k => `
+          <tr>
+            <td>${esc(k.name)}</td>
+            <td><span class="key-text">${esc(k.key)}</span></td>
+            <td><span class="badge badge-${k.status}">${k.status}</span></td>
+            <td>${k.daily_limit ?? '-'}</td>
+          </tr>
+        `).join('')}</tbody>
+       </table>`
+    : '<div style="color:var(--text-muted);font-size:13px;">尚無 API Key</div>';
+
+  document.getElementById('cd-content').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+      <div class="detail-stat"><div class="ds-label">Email</div><div class="ds-value" style="font-size:14px;margin-top:4px;">${esc(client.email)}</div></div>
+      <div class="detail-stat"><div class="ds-label">公司</div><div class="ds-value" style="font-size:14px;margin-top:4px;">${esc(client.company || '-')}</div></div>
+      <div class="detail-stat"><div class="ds-label">電話</div><div class="ds-value" style="font-size:14px;margin-top:4px;">${esc(client.phone || '-')}</div></div>
+      <div class="detail-stat"><div class="ds-label">方案</div><div class="ds-value" style="font-size:14px;margin-top:4px;"><span class="badge badge-${client.tier}">${client.tier}</span></div></div>
+      <div class="detail-stat"><div class="ds-label">Tag 上限</div><div class="ds-value" style="color:var(--accent)">${client.max_tags ?? '無限'}</div></div>
+      <div class="detail-stat"><div class="ds-label">Key 上限</div><div class="ds-value" style="color:var(--purple)">${client.max_keys ?? '無限'}</div></div>
+    </div>
+    <h3 style="font-size:14px;margin-bottom:8px;">API Keys (${keys.length})</h3>
+    ${keysHtml}
+    <div style="margin-top:16px;">
+      <div class="ds-label" style="margin-bottom:4px;">建立時間</div>
+      <div style="font-size:13px;color:var(--text-muted);">${new Date(client.created_at).toLocaleString()}</div>
+    </div>
+  `;
+
+  showModal('client-detail');
+}
+
+// ===== Tags =====
+let tagsCache = [];
+let currentTagMac = null;
+let tempChart = null;
+let humidChart = null;
+
+async function loadTags() {
+  try {
+    const data = await api('/api/sensors/latest');
+    tagsCache = Array.isArray(data) ? data : [];
+    renderTagGrid();
+  } catch (e) {
+    document.getElementById('tags-grid').innerHTML = `<div class="empty-state">載入失敗: ${e.message}</div>`;
+  }
+}
+
+function renderTagGrid() {
+  if (!tagsCache.length) {
+    document.getElementById('tags-grid').innerHTML = '<div class="empty-state">尚無感測器資料</div>';
+    return;
+  }
+  document.getElementById('tags-grid').innerHTML = tagsCache.map(t => {
+    const temp = t.temperature != null ? parseFloat(t.temperature) : null;
+    const humid = t.humidity != null ? parseFloat(t.humidity) : null;
+    const tempClass = temp != null ? (temp < 0 ? 'cold' : temp > 35 ? 'hot' : 'temp') : 'temp';
+    const time = t.created_at ? new Date(t.created_at).toLocaleString() : '-';
+    return `
+      <div class="tag-card" onclick="showTagDetail('${esc(t.mac)}')">
+        <div class="tag-card-header">
+          <span class="tag-card-mac">${esc(t.mac)}</span>
+          <span class="badge badge-active">${esc(t.source || 'api')}</span>
+        </div>
+        ${t.note ? `<div class="tag-card-note">${esc(t.note)}</div>` : ''}
+        <div class="tag-card-sensors">
+          <div class="sensor-item">
+            <div class="s-label">溫度</div>
+            <div class="s-value ${tempClass}">${temp != null ? temp.toFixed(1) + '°C' : '--'}</div>
+          </div>
+          <div class="sensor-item">
+            <div class="s-label">濕度</div>
+            <div class="s-value humid">${humid != null ? humid.toFixed(1) + '%' : '--'}</div>
+          </div>
+        </div>
+        <div class="tag-card-time">最後更新: ${time}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function showTagDetail(mac) {
+  currentTagMac = mac;
+  document.getElementById('tags-list-view').style.display = 'none';
+  document.getElementById('tag-detail-view').style.display = 'block';
+
+  const tag = tagsCache.find(t => t.mac === mac);
+  const temp = tag && tag.temperature != null ? parseFloat(tag.temperature) : null;
+  const humid = tag && tag.humidity != null ? parseFloat(tag.humidity) : null;
+  const pressure = tag && tag.pressure != null ? parseFloat(tag.pressure) : null;
+
+  // Load bindings
+  let bindings = [];
+  try {
+    bindings = await api(`/api/sensors/bindings?mac=${mac}`);
+    if (!Array.isArray(bindings)) bindings = [];
+  } catch {}
+
+  const bindingsHtml = bindings.length
+    ? bindings.map(b => `
+        <div class="binding-tag">
+          <span class="binding-dot ${b.sensor_type}"></span>
+          ${esc(b.sensor_type)} ${b.device_name ? '(' + esc(b.device_name) + ')' : ''}
+          ${b.min_threshold != null || b.max_threshold != null ? `<span style="color:var(--text-muted);font-size:11px;">[${b.min_threshold ?? ''}~${b.max_threshold ?? ''}]</span>` : ''}
+        </div>
+      `).join('')
+    : '<span style="color:var(--text-muted);font-size:13px;">尚未設定感測器綁定</span>';
+
+  document.getElementById('tag-detail-content').innerHTML = `
+    <div class="detail-header">
+      <h2>${esc(mac)}</h2>
+      <span class="badge badge-active">${esc(tag?.source || 'api')}</span>
+      ${tag?.note ? `<span style="color:var(--text-muted);font-size:13px;">${esc(tag.note)}</span>` : ''}
+    </div>
+
+    <div class="detail-stats">
+      <div class="detail-stat">
+        <div class="ds-label">即時溫度</div>
+        <div class="ds-value" style="color:var(--cyan)">${temp != null ? temp.toFixed(1) + '°C' : '--'}</div>
+      </div>
+      <div class="detail-stat">
+        <div class="ds-label">即時濕度</div>
+        <div class="ds-value" style="color:var(--accent)">${humid != null ? humid.toFixed(1) + '%' : '--'}</div>
+      </div>
+      <div class="detail-stat">
+        <div class="ds-label">氣壓</div>
+        <div class="ds-value" style="color:var(--purple)">${pressure != null ? pressure.toFixed(1) + ' hPa' : '--'}</div>
+      </div>
+      <div class="detail-stat">
+        <div class="ds-label">最後更新</div>
+        <div class="ds-value" style="font-size:14px;margin-top:8px;">${tag?.created_at ? new Date(tag.created_at).toLocaleString() : '--'}</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h2>感測器綁定</h2></div>
+      <div class="binding-list">${bindingsHtml}</div>
+    </div>
+
+    <div class="time-range-btns">
+      <button class="active" onclick="loadHistory('${mac}', 6, this)">6h</button>
+      <button onclick="loadHistory('${mac}', 12, this)">12h</button>
+      <button onclick="loadHistory('${mac}', 24, this)">24h</button>
+      <button onclick="loadHistory('${mac}', 72, this)">3d</button>
+      <button onclick="loadHistory('${mac}', 168, this)">7d</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div class="chart-container">
+        <h3>溫度歷史</h3>
+        <div class="chart-canvas-wrap"><canvas id="chart-temp"></canvas></div>
+        <div id="temp-summary" style="font-size:12px;color:var(--text-muted);margin-top:8px;"></div>
+      </div>
+      <div class="chart-container">
+        <h3>濕度歷史</h3>
+        <div class="chart-canvas-wrap"><canvas id="chart-humid"></canvas></div>
+        <div id="humid-summary" style="font-size:12px;color:var(--text-muted);margin-top:8px;"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h2>歷史資料</h2></div>
+      <div id="tag-history-table"><div class="empty-state">載入中...</div></div>
+    </div>
+  `;
+
+  loadHistory(mac, 6);
+}
+
+async function loadHistory(mac, hours, btnEl) {
+  // Update button active state
+  if (btnEl) {
+    document.querySelectorAll('.time-range-btns button').forEach(b => b.classList.remove('active'));
+    btnEl.classList.add('active');
+  }
+
+  try {
+    const res = await api(`/api/sensors/history?mac=${mac}&hours=${hours}&limit=500`);
+    const data = res.data || [];
+    const summary = res.summary || {};
+
+    // Summary text
+    if (summary.temperature) {
+      document.getElementById('temp-summary').innerHTML =
+        `最低 <b>${summary.temperature.min}°C</b> / 最高 <b>${summary.temperature.max}°C</b> / 平均 <b>${summary.temperature.avg}°C</b>`;
+    }
+    if (summary.humidity) {
+      document.getElementById('humid-summary').innerHTML =
+        `最低 <b>${summary.humidity.min}%</b> / 最高 <b>${summary.humidity.max}%</b> / 平均 <b>${summary.humidity.avg}%</b>`;
+    }
+
+    // Draw charts
+    drawCharts(data);
+
+    // History table
+    if (data.length) {
+      const rows = data.slice().reverse().slice(0, 50).map(d => `
+        <tr>
+          <td>${new Date(d.created_at).toLocaleString()}</td>
+          <td>${d.temperature != null ? parseFloat(d.temperature).toFixed(1) + '°C' : '-'}</td>
+          <td>${d.humidity != null ? parseFloat(d.humidity).toFixed(1) + '%' : '-'}</td>
+          <td>${d.pressure != null ? parseFloat(d.pressure).toFixed(1) : '-'}</td>
+          <td><span class="badge badge-active">${d.source || '-'}</span></td>
+          <td>${d.note || '-'}</td>
+        </tr>
+      `).join('');
+      document.getElementById('tag-history-table').innerHTML = `
+        <table>
+          <thead><tr><th>時間</th><th>溫度</th><th>濕度</th><th>氣壓</th><th>來源</th><th>備註</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        ${data.length > 50 ? `<div style="text-align:center;padding:8px;color:var(--text-muted);font-size:12px;">顯示最新 50 筆，共 ${data.length} 筆</div>` : ''}
+      `;
+    } else {
+      document.getElementById('tag-history-table').innerHTML = '<div class="empty-state">此時間範圍內無資料</div>';
+    }
+  } catch (e) {
+    document.getElementById('tag-history-table').innerHTML = `<div class="empty-state">載入失敗: ${e.message}</div>`;
+  }
+}
+
+function drawCharts(data) {
+  const labels = data.map(d => {
+    const dt = new Date(d.created_at);
+    return dt.getMonth()+1 + '/' + dt.getDate() + ' ' + String(dt.getHours()).padStart(2,'0') + ':' + String(dt.getMinutes()).padStart(2,'0');
+  });
+  const temps = data.map(d => d.temperature != null ? parseFloat(d.temperature) : null);
+  const humids = data.map(d => d.humidity != null ? parseFloat(d.humidity) : null);
+
+  if (tempChart) tempChart.destroy();
+  if (humidChart) humidChart.destroy();
+
+  const tempCtx = document.getElementById('chart-temp');
+  const humidCtx = document.getElementById('chart-humid');
+  if (!tempCtx || !humidCtx) return;
+
+  const commonOpts = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: {
+        ticks: { color: '#64748b', font: { size: 10 }, maxTicksLimit: 8 },
+        grid: { color: 'rgba(30,41,59,0.5)' }
+      },
+      y: {
+        ticks: { color: '#64748b', font: { size: 10 } },
+        grid: { color: 'rgba(30,41,59,0.5)' }
+      }
+    },
+    elements: { point: { radius: data.length > 50 ? 0 : 3 }, line: { tension: 0.3 } }
+  };
+
+  tempChart = new Chart(tempCtx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data: temps, borderColor: '#06b6d4', backgroundColor: 'rgba(6,182,212,0.1)',
+        fill: true, borderWidth: 2
+      }]
+    },
+    options: { ...commonOpts, scales: { ...commonOpts.scales, y: { ...commonOpts.scales.y, ticks: { ...commonOpts.scales.y.ticks, callback: v => v + '°C' } } } }
+  });
+
+  humidChart = new Chart(humidCtx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data: humids, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)',
+        fill: true, borderWidth: 2
+      }]
+    },
+    options: { ...commonOpts, scales: { ...commonOpts.scales, y: { ...commonOpts.scales.y, ticks: { ...commonOpts.scales.y.ticks, callback: v => v + '%' } } } }
+  });
+}
+
+function backToTagList() {
+  document.getElementById('tag-detail-view').style.display = 'none';
+  document.getElementById('tags-list-view').style.display = 'block';
+  currentTagMac = null;
 }
 
 // ===== Modals =====
