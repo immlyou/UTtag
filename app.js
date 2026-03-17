@@ -500,43 +500,141 @@ function injectSensorData(data) {
 }
 
 // ---------- B2B 模擬位置資料 ----------
-// 用 MAC 的 hash 產生固定位置，避免每次重新整理位置跳動
 function macToSeed(mac) {
   let h = 0;
   for (let i = 0; i < mac.length; i++) { h = ((h << 5) - h + mac.charCodeAt(i)) | 0; }
   return Math.abs(h);
 }
 
+// 台灣高速公路 / 主要路線座標點
+const TW_ROUTES = [
+  // 國道一號 (北→南)
+  { points: [[25.08,121.52],[24.98,121.45],[24.85,121.02],[24.75,120.94],[24.60,120.82],[24.45,120.68],[24.15,120.65],[23.88,120.55],[23.58,120.42],[23.30,120.35],[22.95,120.30],[22.63,120.33]], name: "國道一號" },
+  // 國道三號 (北→南)
+  { points: [[25.10,121.58],[24.92,121.50],[24.80,121.10],[24.65,120.92],[24.48,120.78],[24.25,120.72],[24.00,120.62],[23.70,120.50],[23.42,120.42],[23.10,120.38],[22.80,120.35],[22.55,120.38]], name: "國道三號" },
+  // 國道五號 (宜蘭)
+  { points: [[25.02,121.55],[24.95,121.60],[24.85,121.72],[24.78,121.76]], name: "國道五號" },
+  // 西濱快速道路
+  { points: [[25.18,121.42],[25.05,121.02],[24.85,120.88],[24.55,120.62],[24.25,120.52],[23.95,120.38],[23.60,120.28],[23.25,120.22]], name: "西濱快" },
+  // 東部公路 (蘇花/花東)
+  { points: [[24.60,121.85],[24.35,121.70],[24.10,121.60],[23.85,121.52],[23.58,121.40],[23.30,121.25],[22.95,121.12],[22.75,121.05]], name: "東部公路" },
+];
+
+// 固定地點 (倉庫/門市/工廠)
+const TW_FIXED_LOCATIONS = [
+  { lat: 25.0478, lng: 121.5170, area: "台北" },
+  { lat: 25.0120, lng: 121.4650, area: "板橋" },
+  { lat: 24.9930, lng: 121.3010, area: "桃園" },
+  { lat: 24.8020, lng: 120.9710, area: "新竹" },
+  { lat: 24.1480, lng: 120.6740, area: "台中" },
+  { lat: 24.0800, lng: 120.5400, area: "彰化" },
+  { lat: 23.4800, lng: 120.4490, area: "嘉義" },
+  { lat: 22.9990, lng: 120.2270, area: "台南" },
+  { lat: 22.6273, lng: 120.3014, area: "高雄" },
+  { lat: 22.7560, lng: 121.1440, area: "台東" },
+  { lat: 23.9770, lng: 121.6040, area: "花蓮" },
+  { lat: 24.7640, lng: 121.7530, area: "宜蘭" },
+  { lat: 25.1300, lng: 121.7400, area: "基隆" },
+  { lat: 24.4440, lng: 120.6910, area: "苗栗" },
+  { lat: 23.6980, lng: 120.4310, area: "雲林" },
+  { lat: 22.5550, lng: 120.3560, area: "屏東" },
+];
+
+// 移動中的 Tag 狀態（持久化在 session 中）
+let movingTagStates = {};
+
 function mergeB2BSimulatedData() {
   const existingMacs = new Set(latestData.map(d => (d.mac || "").toUpperCase()));
   const b2bTags = allTags.filter(t => t.b2bTag && !existingMacs.has(t.mac.toUpperCase()));
 
-  // 以台灣中部為中心散佈
-  const centerLat = 24.15;
-  const centerLng = 120.67;
-  const spread = 1.5; // 約 ±1.5 度範圍
-
   b2bTags.forEach(tag => {
     const seed = macToSeed(tag.mac);
     const s1 = ((seed * 9301 + 49297) % 233280) / 233280;
-    const s2 = ((seed * 7919 + 10007) % 233280) / 233280;
-    const s3 = ((seed * 6571 + 31337) % 233280) / 233280;
-    const s4 = ((seed * 3137 + 54321) % 233280) / 233280;
+    const type = s1 < 0.35 ? "moving" : "fixed"; // 35% 為移動車輛
+    const battery = Math.floor(30 + ((seed * 6571 + 31337) % 233280) / 233280 * 70);
 
-    const lat = centerLat + (s1 - 0.5) * spread * 2;
-    const lng = centerLng + (s2 - 0.5) * spread * 2;
-    const battery = Math.floor(20 + s3 * 80);
-    const minutesAgo = Math.floor(s4 * 120);
+    let lat, lng, speed = 0, heading = "";
+
+    if (type === "fixed") {
+      // 固定點：倉庫/門市/工廠，加一點隨機偏移
+      const locIdx = seed % TW_FIXED_LOCATIONS.length;
+      const loc = TW_FIXED_LOCATIONS[locIdx];
+      const jitterLat = ((seed * 3571) % 10000) / 10000 * 0.008 - 0.004;
+      const jitterLng = ((seed * 7127) % 10000) / 10000 * 0.008 - 0.004;
+      lat = loc.lat + jitterLat;
+      lng = loc.lng + jitterLng;
+    } else {
+      // 移動車輛：沿高速公路路線移動
+      const routeIdx = seed % TW_ROUTES.length;
+      const route = TW_ROUTES[routeIdx];
+      const pts = route.points;
+
+      // 初始化或取得目前狀態
+      if (!movingTagStates[tag.mac]) {
+        const startSeg = seed % (pts.length - 1);
+        const dir = ((seed * 4217) % 2 === 0) ? 1 : -1;
+        movingTagStates[tag.mac] = {
+          routeIdx,
+          segment: startSeg,
+          progress: ((seed * 8123) % 1000) / 1000,
+          direction: dir,
+          speed: 60 + Math.floor(((seed * 2341) % 100) / 100 * 60), // 60~120 km/h
+        };
+      }
+
+      const state = movingTagStates[tag.mac];
+      const seg = state.segment;
+      const p = state.progress;
+      const p1 = pts[seg];
+      const p2 = pts[Math.min(seg + 1, pts.length - 1)];
+
+      // 插值計算目前位置
+      lat = p1[0] + (p2[0] - p1[0]) * p;
+      lng = p1[1] + (p2[1] - p1[1]) * p;
+
+      // 加一點隨機偏移模擬車道
+      lat += (Math.random() - 0.5) * 0.002;
+      lng += (Math.random() - 0.5) * 0.002;
+
+      speed = state.speed + Math.floor((Math.random() - 0.5) * 20);
+      heading = state.direction > 0 ? "南行" : "北行";
+
+      // 推進位置（每次 refresh 移動一段）
+      const step = 0.03 + Math.random() * 0.04; // 每次移動 3~7%
+      state.progress += step * state.direction;
+
+      // 到端點就折返或跳到下一段
+      if (state.progress >= 1) {
+        state.progress = 0;
+        state.segment++;
+        if (state.segment >= pts.length - 1) {
+          state.direction = -1;
+          state.segment = pts.length - 2;
+          state.progress = 1;
+        }
+      } else if (state.progress <= 0) {
+        state.progress = 1;
+        state.segment--;
+        if (state.segment < 0) {
+          state.direction = 1;
+          state.segment = 0;
+          state.progress = 0;
+        }
+      }
+    }
 
     latestData.push({
       mac: tag.mac,
       latitude: parseFloat(lat.toFixed(6)),
       longitude: parseFloat(lng.toFixed(6)),
       lastBatteryLevel: battery,
-      lastRequestDate: new Date(Date.now() - minutesAgo * 60000).toISOString(),
+      lastRequestDate: new Date(Date.now() - Math.floor(Math.random() * 5) * 60000).toISOString(),
       status: battery < 20 ? "lowBattery" : "normal",
       b2bSimulated: true,
+      b2bType: type,
       label: tag.label || null,
+      speed: type === "moving" ? Math.max(0, speed) : 0,
+      heading: heading,
     });
   });
 }
