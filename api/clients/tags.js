@@ -4,18 +4,19 @@ const { getAdminFromReq, cors, json, error } = require("../../lib/auth");
 module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") { cors(res); return res.status(200).end(); }
 
-  const admin = getAdminFromReq(req);
-  if (!admin) return error(res, "未授權", 401);
-
-  // GET — 列出客戶綁定的 TAGs
+  // GET — 列出客戶綁定的 TAGs（公開，Dashboard 需要）
   if (req.method === "GET") {
     const { client_id } = req.query || {};
-    let query = supabase.from("client_tags").select("*").order("created_at", { ascending: false });
+    let query = supabase.from("client_tags").select("id, mac, label, client_id, created_at").order("created_at", { ascending: false });
     if (client_id) query = query.eq("client_id", client_id);
     const { data, error: dbErr } = await query;
     if (dbErr) return error(res, dbErr.message);
     return json(res, data);
   }
+
+  // 以下操作需要 admin 驗證
+  const admin = getAdminFromReq(req);
+  if (!admin) return error(res, "未授權", 401);
 
   // POST — 綁定 TAG 給客戶
   if (req.method === "POST") {

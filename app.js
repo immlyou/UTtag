@@ -295,6 +295,40 @@ async function apiCall(endpoint, body, _retryCount = 0) {
 }
 
 // ================================================================
+//  [F0] B2B Client Tags 合併
+// ================================================================
+async function mergeClientTags() {
+  try {
+    const res = await fetch("/api/clients/tags");
+    const tags = await res.json();
+    if (!Array.isArray(tags) || tags.length === 0) return;
+
+    const existingMacs = new Set(allTags.map(t => t.mac.toUpperCase()));
+    let added = 0;
+
+    tags.forEach(ct => {
+      const mac = ct.mac.toUpperCase();
+      if (!existingMacs.has(mac)) {
+        allTags.push({
+          mac,
+          b2bTag: true,
+          label: ct.label || null,
+          client_id: ct.client_id,
+        });
+        existingMacs.add(mac);
+        added++;
+      }
+    });
+
+    if (added > 0) {
+      console.log(`[B2B] 合併了 ${added} 個 client_tags`);
+    }
+  } catch (e) {
+    console.log("[B2B] client_tags 載入略過:", e.message);
+  }
+}
+
+// ================================================================
 //  [F1] 手動 Tag 管理
 // ================================================================
 function mergeManualTags() {
@@ -385,6 +419,9 @@ async function connect() {
     allTags = await apiCall("all", {});
     if (!Array.isArray(allTags)) allTags = [];
 
+    // 合併 B2B client_tags（從 Supabase 取得綁定的 TAG）
+    await mergeClientTags();
+
     // 合併手動 Tag
     mergeManualTags();
 
@@ -462,12 +499,58 @@ function injectSensorData(data) {
   });
 }
 
+// ---------- B2B 模擬位置資料 ----------
+// 用 MAC 的 hash 產生固定位置，避免每次重新整理位置跳動
+function macToSeed(mac) {
+  let h = 0;
+  for (let i = 0; i < mac.length; i++) { h = ((h << 5) - h + mac.charCodeAt(i)) | 0; }
+  return Math.abs(h);
+}
+
+function mergeB2BSimulatedData() {
+  const existingMacs = new Set(latestData.map(d => (d.mac || "").toUpperCase()));
+  const b2bTags = allTags.filter(t => t.b2bTag && !existingMacs.has(t.mac.toUpperCase()));
+
+  // 以台灣中部為中心散佈
+  const centerLat = 24.15;
+  const centerLng = 120.67;
+  const spread = 1.5; // 約 ±1.5 度範圍
+
+  b2bTags.forEach(tag => {
+    const seed = macToSeed(tag.mac);
+    const s1 = ((seed * 9301 + 49297) % 233280) / 233280;
+    const s2 = ((seed * 7919 + 10007) % 233280) / 233280;
+    const s3 = ((seed * 6571 + 31337) % 233280) / 233280;
+    const s4 = ((seed * 3137 + 54321) % 233280) / 233280;
+
+    const lat = centerLat + (s1 - 0.5) * spread * 2;
+    const lng = centerLng + (s2 - 0.5) * spread * 2;
+    const battery = Math.floor(20 + s3 * 80);
+    const minutesAgo = Math.floor(s4 * 120);
+
+    latestData.push({
+      mac: tag.mac,
+      latitude: parseFloat(lat.toFixed(6)),
+      longitude: parseFloat(lng.toFixed(6)),
+      lastBatteryLevel: battery,
+      lastRequestDate: new Date(Date.now() - minutesAgo * 60000).toISOString(),
+      status: battery < 20 ? "lowBattery" : "normal",
+      b2bSimulated: true,
+      label: tag.label || null,
+    });
+  });
+}
+
 // ---------- 取得最新定位 ----------
 async function fetchLatest() {
   const macs = allTags.map((t) => t.mac);
   try {
     const result = await apiCall("latest", { macs });
     latestData = Array.isArray(result) ? result : [];
+
+    // 為 B2B tags 補上模擬位置（UTTEC 不會回傳它們）
+    mergeB2BSimulatedData();
+
     await fetchSensorData(macs);
     injectSensorData(latestData);
     updateSensorSourceBadge();
