@@ -297,35 +297,33 @@ async function apiCall(endpoint, body, _retryCount = 0) {
 // ================================================================
 //  [F0] B2B Client Tags 合併
 // ================================================================
+let _clientTagsCache = [];
+
 async function mergeClientTags() {
   try {
     const res = await fetch("/api/clients/tags");
     const tags = await res.json();
-    if (!Array.isArray(tags) || tags.length === 0) return;
-
-    const existingMacs = new Set(allTags.map(t => t.mac.toUpperCase()));
-    let added = 0;
-
-    tags.forEach(ct => {
-      const mac = ct.mac.toUpperCase();
-      if (!existingMacs.has(mac)) {
-        allTags.push({
-          mac,
-          b2bTag: true,
-          label: ct.label || null,
-          client_id: ct.client_id,
-        });
-        existingMacs.add(mac);
-        added++;
-      }
-    });
-
-    if (added > 0) {
-      console.log(`[B2B] 合併了 ${added} 個 client_tags`);
-    }
+    _clientTagsCache = Array.isArray(tags) ? tags : [];
+    console.log(`[B2B] 載入 ${_clientTagsCache.length} 個 client_tags`);
   } catch (e) {
+    _clientTagsCache = [];
     console.log("[B2B] client_tags 載入略過:", e.message);
   }
+}
+
+function mergeClientTagsFromCache() {
+  if (!_clientTagsCache.length) return;
+  const existingMacs = new Set(allTags.map(t => t.mac.toUpperCase()));
+  let added = 0;
+  _clientTagsCache.forEach(ct => {
+    const mac = ct.mac.toUpperCase();
+    if (!existingMacs.has(mac)) {
+      allTags.push({ mac, b2bTag: true, label: ct.label || null, client_id: ct.client_id });
+      existingMacs.add(mac);
+      added++;
+    }
+  });
+  if (added > 0) console.log(`[B2B] 合併了 ${added} 個 client_tags`);
 }
 
 // ================================================================
@@ -416,11 +414,15 @@ async function connect() {
   showSkeleton(true);
 
   try {
-    allTags = await apiCall("all", {});
-    if (!Array.isArray(allTags)) allTags = [];
+    // 並行載入：UTTEC Tags + B2B Client Tags
+    const [uttecTags] = await Promise.all([
+      apiCall("all", {}).catch(() => []),
+      mergeClientTags(),  // 預先載入到暫存，稍後合併
+    ]);
+    allTags = Array.isArray(uttecTags) ? uttecTags : [];
 
-    // 合併 B2B client_tags（從 Supabase 取得綁定的 TAG）
-    await mergeClientTags();
+    // 合併 B2B client_tags（已預先載入）
+    mergeClientTagsFromCache();
 
     // 合併手動 Tag
     mergeManualTags();
@@ -433,7 +435,9 @@ async function connect() {
 
     status.className = "status success";
     const manualCount = manualTags.length;
-    status.textContent = `已取得 ${allTags.length} 個 Tag${manualCount > 0 ? `（含 ${manualCount} 個手動）` : ""}，正在取得位置...`;
+    const b2bCount = allTags.filter(t => t.b2bTag).length;
+    const realCount = allTags.length - b2bCount - manualCount;
+    status.textContent = `已取得 ${allTags.length} 個 Tag（${realCount} 實體 + ${b2bCount} B2B），正在取得位置...`;
 
     renderPlanInfo(key, allTags);
     document.getElementById("plan-section").style.display = "block";
@@ -645,15 +649,20 @@ function mergeB2BSimulatedData() {
 
 // ---------- 取得最新定位 ----------
 async function fetchLatest() {
-  const macs = allTags.map((t) => t.mac);
+  // 只送真實 TAG 到 UTTEC，B2B 模擬的不送（大幅加速）
+  const realMacs = allTags.filter(t => !t.b2bTag).map(t => t.mac);
+  const allMacs = allTags.map(t => t.mac);
   try {
-    const result = await apiCall("latest", { macs });
+    // 並行：UTTEC 查詢 + 感測器資料
+    const [result] = await Promise.all([
+      apiCall("latest", { macs: realMacs }),
+      fetchSensorData(allMacs),
+    ]);
     latestData = Array.isArray(result) ? result : [];
 
     // 為 B2B tags 補上模擬位置（UTTEC 不會回傳它們）
     mergeB2BSimulatedData();
 
-    await fetchSensorData(macs);
     injectSensorData(latestData);
     updateSensorSourceBadge();
     renderTagList();
