@@ -761,17 +761,24 @@ async function loadUsage() {
 }
 
 // ===== Client Detail =====
+let currentDetailClientId = null;
+
 async function viewClientDetail(clientId) {
   const client = clientsCache.find(c => c.id === clientId);
   if (!client) return;
+  currentDetailClientId = clientId;
 
   document.getElementById('cd-title').textContent = client.name;
 
-  // Load keys for this client
-  let keys = [];
+  // Load keys + tags in parallel
+  let keys = [], tags = [];
   try {
-    const data = await api(`/api/keys/list?client_id=${clientId}`);
-    keys = Array.isArray(data) ? data : (data.keys || []);
+    const [keysRes, tagsRes] = await Promise.all([
+      api(`/api/keys/list?client_id=${clientId}`),
+      api(`/api/clients/tags?client_id=${clientId}`),
+    ]);
+    keys = Array.isArray(keysRes) ? keysRes : (keysRes.keys || []);
+    tags = Array.isArray(tagsRes) ? tagsRes : [];
   } catch {}
 
   const keysHtml = keys.length
@@ -788,6 +795,15 @@ async function viewClientDetail(clientId) {
        </table>`
     : '<div style="color:var(--text-muted);font-size:13px;">尚無 API Key</div>';
 
+  const tagsHtml = tags.length
+    ? tags.map(t => `
+        <div class="binding-tag" style="justify-content:space-between;">
+          <span><span class="binding-dot temperature"></span> <strong>${esc(t.mac)}</strong> ${t.label ? '(' + esc(t.label) + ')' : ''}</span>
+          <button class="btn btn-sm btn-danger" style="padding:2px 8px;font-size:11px;margin-left:8px;" onclick="removeClientTag('${t.id}')">移除</button>
+        </div>
+      `).join('')
+    : '<div style="color:var(--text-muted);font-size:13px;">尚未綁定任何 TAG</div>';
+
   document.getElementById('cd-content').innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
       <div class="detail-stat"><div class="ds-label">Email</div><div class="ds-value" style="font-size:14px;margin-top:4px;">${esc(client.email)}</div></div>
@@ -795,8 +811,17 @@ async function viewClientDetail(clientId) {
       <div class="detail-stat"><div class="ds-label">電話</div><div class="ds-value" style="font-size:14px;margin-top:4px;">${esc(client.phone || '-')}</div></div>
       <div class="detail-stat"><div class="ds-label">方案</div><div class="ds-value" style="font-size:14px;margin-top:4px;"><span class="badge badge-${client.tier}">${client.tier}</span></div></div>
       <div class="detail-stat"><div class="ds-label">Tag 上限</div><div class="ds-value" style="color:var(--accent)">${client.max_tags ?? '無限'}</div></div>
-      <div class="detail-stat"><div class="ds-label">Key 上限</div><div class="ds-value" style="color:var(--purple)">${client.max_keys ?? '無限'}</div></div>
+      <div class="detail-stat"><div class="ds-label">已綁定 TAG</div><div class="ds-value" style="color:var(--success)">${tags.length}</div></div>
     </div>
+
+    <h3 style="font-size:14px;margin-bottom:8px;">綁定的 TAG (${tags.length}/${client.max_tags ?? '∞'})</h3>
+    <div class="binding-list" style="margin-bottom:12px;">${tagsHtml}</div>
+    <div style="display:flex;gap:8px;margin-bottom:20px;">
+      <input type="text" id="cd-new-mac" placeholder="MAC 地址 (XX:XX:XX:XX:XX:XX)" style="flex:1;padding:8px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-size:13px;">
+      <input type="text" id="cd-new-label" placeholder="標籤名稱 (選填)" style="width:140px;padding:8px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-size:13px;">
+      <button class="btn btn-sm btn-success" onclick="addClientTag('${clientId}')">綁定</button>
+    </div>
+
     <h3 style="font-size:14px;margin-bottom:8px;">API Keys (${keys.length})</h3>
     ${keysHtml}
     <div style="margin-top:16px;">
@@ -806,6 +831,32 @@ async function viewClientDetail(clientId) {
   `;
 
   showModal('client-detail');
+}
+
+async function addClientTag(clientId) {
+  const mac = document.getElementById('cd-new-mac').value.trim().toUpperCase();
+  const label = document.getElementById('cd-new-label').value.trim();
+  if (!mac) return toast('請輸入 MAC 地址', 'error');
+  if (!/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(mac)) return toast('MAC 格式不正確', 'error');
+
+  try {
+    await api('/api/clients/tags', 'POST', { client_id: clientId, mac, label });
+    toast('TAG 綁定成功！');
+    viewClientDetail(clientId); // refresh
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function removeClientTag(tagId) {
+  if (!confirm('確定要移除此 TAG 綁定？')) return;
+  try {
+    await api('/api/clients/tags', 'DELETE', { id: tagId });
+    toast('TAG 已移除');
+    if (currentDetailClientId) viewClientDetail(currentDetailClientId);
+  } catch (e) {
+    toast(e.message, 'error');
+  }
 }
 
 // ===== Tags =====

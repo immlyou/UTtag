@@ -110,7 +110,19 @@ CREATE TABLE sensor_bindings (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- 客戶 TAG 綁定（哪個客戶可以存取哪些 TAG）
+CREATE TABLE client_tags (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+  mac TEXT NOT NULL,
+  label TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(client_id, mac)
+);
+
 -- 索引
+CREATE INDEX idx_client_tags_client ON client_tags(client_id);
+CREATE INDEX idx_client_tags_mac ON client_tags(mac);
 CREATE INDEX idx_sensor_data_mac ON sensor_data(mac);
 CREATE INDEX idx_sensor_data_created ON sensor_data(created_at);
 CREATE INDEX idx_sensor_data_mac_created ON sensor_data(mac, created_at DESC);
