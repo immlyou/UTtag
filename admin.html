@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="zh-TW" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UTFind — API 管理後台</title>
+  <style>
+    :root, [data-theme="dark"] {
+      --bg-body: #0b1120;
+      --bg-card: #1a2332;
+      --bg-card-hover: #1f2b3d;
+      --bg-input: #0f1729;
+      --border: #1e293b;
+      --border-light: #334155;
+      --text: #f1f5f9;
+      --text-secondary: #cbd5e1;
+      --text-muted: #64748b;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --success: #22c55e;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --purple: #a855f7;
+      --cyan: #06b6d4;
+      --shadow: 0 4px 24px rgba(0,0,0,0.3);
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-body);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ===== Login ===== */
+    .login-wrap {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh;
+    }
+    .login-box {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 40px;
+      width: 380px;
+      box-shadow: var(--shadow);
+    }
+    .login-box h1 {
+      font-size: 22px; margin-bottom: 6px;
+    }
+    .login-box p {
+      color: var(--text-muted); font-size: 14px; margin-bottom: 24px;
+    }
+    .form-group { margin-bottom: 16px; }
+    .form-group label {
+      display: block; font-size: 13px; color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+    .form-group input {
+      width: 100%; padding: 10px 14px; border-radius: var(--radius-sm);
+      border: 1px solid var(--border); background: var(--bg-input);
+      color: var(--text); font-size: 14px; outline: none;
+      transition: border-color 0.2s;
+    }
+    .form-group input:focus { border-color: var(--accent); }
+    .btn {
+      padding: 10px 20px; border: none; border-radius: var(--radius-sm);
+      font-size: 14px; font-weight: 600; cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: var(--accent); color: #fff; width: 100%;
+    }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-sm { padding: 6px 14px; font-size: 12px; }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-outline {
+      background: transparent; color: var(--accent);
+      border: 1px solid var(--accent);
+    }
+    .btn-outline:hover { background: var(--accent); color: #fff; }
+    .login-error {
+      color: var(--danger); font-size: 13px; margin-top: 12px;
+      display: none;
+    }
+
+    /* ===== Layout ===== */
+    .admin-layout { display: none; }
+    .top-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 28px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+    }
+    .top-bar h1 { font-size: 18px; }
+    .top-bar-right { display: flex; align-items: center; gap: 12px; }
+    .top-bar-user { font-size: 13px; color: var(--text-muted); }
+    .top-bar .btn-logout {
+      background: transparent; color: var(--danger); border: 1px solid var(--danger);
+      padding: 6px 14px; border-radius: var(--radius-sm); font-size: 12px;
+      cursor: pointer;
+    }
+    .top-bar .btn-logout:hover { background: var(--danger); color: #fff; }
+
+    .tabs {
+      display: flex; gap: 0; border-bottom: 1px solid var(--border);
+      background: var(--bg-card);
+      padding: 0 28px;
+    }
+    .tab {
+      padding: 12px 20px; font-size: 14px; cursor: pointer;
+      color: var(--text-muted); border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    .content { padding: 24px 28px; max-width: 1100px; }
+
+    /* ===== Cards & Tables ===== */
+    .stats-row {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px; margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px;
+    }
+    .stat-card .label { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+    .stat-card .value { font-size: 28px; font-weight: 700; }
+    .stat-card .value.accent { color: var(--accent); }
+    .stat-card .value.success { color: var(--success); }
+    .stat-card .value.purple { color: var(--purple); }
+    .stat-card .value.warning { color: var(--warning); }
+
+    .card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px; margin-bottom: 20px;
+    }
+    .card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .card-header h2 { font-size: 16px; }
+
+    table {
+      width: 100%; border-collapse: collapse; font-size: 13px;
+    }
+    th {
+      text-align: left; padding: 10px 12px; color: var(--text-muted);
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 10px 12px; border-bottom: 1px solid var(--border);
+    }
+    tr:hover td { background: var(--bg-card-hover); }
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 10px;
+      font-size: 11px; font-weight: 600;
+    }
+    .badge-active { background: rgba(34,197,94,0.15); color: var(--success); }
+    .badge-suspended { background: rgba(245,158,11,0.15); color: var(--warning); }
+    .badge-revoked { background: rgba(239,68,68,0.15); color: var(--danger); }
+    .badge-free { background: rgba(100,116,139,0.15); color: var(--text-muted); }
+    .badge-basic { background: rgba(59,130,246,0.15); color: var(--accent); }
+    .badge-pro { background: rgba(168,85,247,0.15); color: var(--purple); }
+    .badge-enterprise { background: rgba(6,182,212,0.15); color: var(--cyan); }
+
+    .key-text {
+      font-family: monospace; font-size: 12px; background: var(--bg-input);
+      padding: 2px 8px; border-radius: 4px; user-select: all;
+    }
+    .empty-state {
+      text-align: center; padding: 40px; color: var(--text-muted); font-size: 14px;
+    }
+
+    /* ===== Modal ===== */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+      z-index: 1000; align-items: center; justify-content: center;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 28px; width: 440px;
+      box-shadow: var(--shadow);
+    }
+    .modal h2 { font-size: 18px; margin-bottom: 20px; }
+    .modal .form-group select {
+      width: 100%; padding: 10px 14px; border-radius: var(--radius-sm);
+      border: 1px solid var(--border); background: var(--bg-input);
+      color: var(--text); font-size: 14px;
+    }
+    .modal-actions {
+      display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;
+    }
+
+    .toast {
+      position: fixed; top: 20px; right: 20px; padding: 12px 20px;
+      border-radius: var(--radius-sm); font-size: 13px; z-index: 2000;
+      animation: slideIn 0.3s ease;
+    }
+    .toast-success { background: var(--success); color: #fff; }
+    .toast-error { background: var(--danger); color: #fff; }
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    .back-link {
+      color: var(--text-muted); font-size: 13px; text-decoration: none;
+    }
+    .back-link:hover { color: var(--accent); }
+  </style>
+</head>
+<body>
+
+<!-- ===== Login Screen ===== -->
+<div id="login-screen" class="login-wrap">
+  <div class="login-box">
+    <h1>🔐 UTFind API 管理後台</h1>
+    <p>請登入管理員帳號</p>
+    <div class="form-group">
+      <label>帳號</label>
+      <input type="text" id="login-user" placeholder="admin" autocomplete="username">
+    </div>
+    <div class="form-group">
+      <label>密碼</label>
+      <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="btn btn-primary" onclick="doLogin()">登入</button>
+    <div id="login-error" class="login-error"></div>
+    <div style="margin-top:16px;text-align:center;">
+      <a href="/" class="back-link">← 返回 Dashboard</a>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Admin Layout ===== -->
+<div id="admin-layout" class="admin-layout">
+  <div class="top-bar">
+    <div style="display:flex;align-items:center;gap:16px;">
+      <h1>UTFind API 管理後台</h1>
+      <a href="/" class="back-link">← Dashboard</a>
+    </div>
+    <div class="top-bar-right">
+      <span class="top-bar-user" id="admin-username"></span>
+      <button class="btn-logout" onclick="doLogout()">登出</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="overview" onclick="switchTab('overview')">總覽</div>
+    <div class="tab" data-tab="clients" onclick="switchTab('clients')">客戶管理</div>
+    <div class="tab" data-tab="keys" onclick="switchTab('keys')">API Keys</div>
+    <div class="tab" data-tab="usage" onclick="switchTab('usage')">用量統計</div>
+  </div>
+
+  <!-- Overview -->
+  <div class="content tab-content" id="tab-overview">
+    <div class="stats-row" id="overview-stats"></div>
+    <div class="card">
+      <div class="card-header"><h2>最近活動</h2></div>
+      <div id="recent-activity"><div class="empty-state">載入中...</div></div>
+    </div>
+  </div>
+
+  <!-- Clients -->
+  <div class="content tab-content" id="tab-clients" style="display:none;">
+    <div class="card">
+      <div class="card-header">
+        <h2>客戶列表</h2>
+        <button class="btn btn-sm btn-primary" onclick="showModal('client')">+ 新增客戶</button>
+      </div>
+      <div id="clients-table"><div class="empty-state">載入中...</div></div>
+    </div>
+  </div>
+
+  <!-- API Keys -->
+  <div class="content tab-content" id="tab-keys" style="display:none;">
+    <div class="card">
+      <div class="card-header">
+        <h2>API Keys</h2>
+        <button class="btn btn-sm btn-primary" onclick="showModal('key')">+ 產生 Key</button>
+      </div>
+      <div id="keys-table"><div class="empty-state">載入中...</div></div>
+    </div>
+  </div>
+
+  <!-- Usage -->
+  <div class="content tab-content" id="tab-usage" style="display:none;">
+    <div class="stats-row" id="usage-stats"></div>
+    <div class="card">
+      <div class="card-header"><h2>每日用量</h2></div>
+      <div id="usage-daily"><div class="empty-state">載入中...</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== New Client Modal ===== -->
+<div class="modal-overlay" id="modal-client">
+  <div class="modal">
+    <h2>新增客戶</h2>
+    <div class="form-group">
+      <label>名稱 *</label>
+      <input type="text" id="c-name" placeholder="客戶名稱">
+    </div>
+    <div class="form-group">
+      <label>Email *</label>
+      <input type="email" id="c-email" placeholder="client@example.com">
+    </div>
+    <div class="form-group">
+      <label>公司</label>
+      <input type="text" id="c-company" placeholder="公司名稱">
+    </div>
+    <div class="form-group">
+      <label>電話</label>
+      <input type="text" id="c-phone" placeholder="電話">
+    </div>
+    <div class="form-group">
+      <label>方案</label>
+      <select id="c-tier">
+        <option value="free">免費版</option>
+        <option value="basic">基本版 (NT$990/月)</option>
+        <option value="pro">專業版 (NT$2,990/月)</option>
+        <option value="enterprise">企業版</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-sm btn-outline" onclick="hideModal('client')">取消</button>
+      <button class="btn btn-sm btn-primary" onclick="createClient()">建立</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== New Key Modal ===== -->
+<div class="modal-overlay" id="modal-key">
+  <div class="modal">
+    <h2>產生 API Key</h2>
+    <div class="form-group">
+      <label>選擇客戶 *</label>
+      <select id="k-client"></select>
+    </div>
+    <div class="form-group">
+      <label>Key 名稱</label>
+      <input type="text" id="k-name" placeholder="例：Production Key">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-sm btn-outline" onclick="hideModal('key')">取消</button>
+      <button class="btn btn-sm btn-primary" onclick="createKey()">產生</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+let token = localStorage.getItem('admin_token');
+let adminUser = localStorage.getItem('admin_user') || '';
+
+// ===== Auth =====
+async function doLogin() {
+  const username = document.getElementById('login-user').value.trim();
+  const password = document.getElementById('login-pass').value;
+  const errEl = document.getElementById('login-error');
+  errEl.style.display = 'none';
+
+  if (!username || !password) {
+    errEl.textContent = '請輸入帳號和密碼';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    token = data.token;
+    adminUser = data.username;
+    localStorage.setItem('admin_token', token);
+    localStorage.setItem('admin_user', adminUser);
+    showAdmin();
+  } catch (e) {
+    errEl.textContent = e.message || '登入失敗';
+    errEl.style.display = 'block';
+  }
+}
+
+function doLogout() {
+  token = null;
+  localStorage.removeItem('admin_token');
+  localStorage.removeItem('admin_user');
+  document.getElementById('admin-layout').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+}
+
+function showAdmin() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('admin-layout').style.display = 'block';
+  document.getElementById('admin-username').textContent = adminUser;
+  loadOverview();
+  loadClients();
+}
+
+// Enter key login
+document.getElementById('login-pass').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+
+// ===== API Helper =====
+async function api(path, method = 'GET', body = null) {
+  const opts = {
+    method,
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+  };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(`${API}${path}`, opts);
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data;
+}
+
+// ===== Tabs =====
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+  document.getElementById(`tab-${name}`).style.display = 'block';
+
+  if (name === 'overview') loadOverview();
+  if (name === 'clients') loadClients();
+  if (name === 'keys') loadKeys();
+  if (name === 'usage') loadUsage();
+}
+
+// ===== Overview =====
+async function loadOverview() {
+  try {
+    const stats = await api('/api/usage/stats');
+    document.getElementById('overview-stats').innerHTML = `
+      <div class="stat-card"><div class="label">總客戶數</div><div class="value accent">${stats.total_clients ?? 0}</div></div>
+      <div class="stat-card"><div class="label">有效 API Keys</div><div class="value success">${stats.active_keys ?? 0}</div></div>
+      <div class="stat-card"><div class="label">今日 API 呼叫</div><div class="value purple">${stats.today_requests ?? 0}</div></div>
+      <div class="stat-card"><div class="label">本月呼叫</div><div class="value warning">${stats.month_requests ?? 0}</div></div>
+    `;
+
+    if (stats.top_clients && stats.top_clients.length) {
+      let rows = stats.top_clients.map(c => `
+        <tr><td>${c.name || c.client_id}</td><td>${c.total_requests ?? 0}</td></tr>
+      `).join('');
+      document.getElementById('recent-activity').innerHTML = `
+        <table><thead><tr><th>客戶</th><th>請求數</th></tr></thead><tbody>${rows}</tbody></table>
+      `;
+    } else {
+      document.getElementById('recent-activity').innerHTML = '<div class="empty-state">尚無活動紀錄</div>';
+    }
+  } catch (e) {
+    document.getElementById('overview-stats').innerHTML = `
+      <div class="stat-card"><div class="label">總客戶數</div><div class="value accent">-</div></div>
+      <div class="stat-card"><div class="label">有效 API Keys</div><div class="value success">-</div></div>
+      <div class="stat-card"><div class="label">今日 API 呼叫</div><div class="value purple">-</div></div>
+      <div class="stat-card"><div class="label">本月呼叫</div><div class="value warning">-</div></div>
+    `;
+    document.getElementById('recent-activity').innerHTML = '<div class="empty-state">尚無活動紀錄</div>';
+  }
+}
+
+// ===== Clients =====
+let clientsCache = [];
+async function loadClients() {
+  try {
+    const data = await api('/api/clients/list');
+    clientsCache = Array.isArray(data) ? data : (data.clients || []);
+    renderClients();
+  } catch (e) {
+    document.getElementById('clients-table').innerHTML = `<div class="empty-state">載入失敗: ${e.message}</div>`;
+  }
+}
+
+function renderClients() {
+  if (!clientsCache.length) {
+    document.getElementById('clients-table').innerHTML = '<div class="empty-state">尚無客戶</div>';
+    return;
+  }
+  const rows = clientsCache.map(c => `
+    <tr>
+      <td><strong>${esc(c.name)}</strong></td>
+      <td>${esc(c.email)}</td>
+      <td>${esc(c.company || '-')}</td>
+      <td><span class="badge badge-${c.tier}">${c.tier}</span></td>
+      <td><span class="badge badge-${c.status}">${c.status}</span></td>
+      <td>${c.max_tags ?? '-'}</td>
+      <td>${new Date(c.created_at).toLocaleDateString()}</td>
+    </tr>
+  `).join('');
+  document.getElementById('clients-table').innerHTML = `
+    <table>
+      <thead><tr><th>名稱</th><th>Email</th><th>公司</th><th>方案</th><th>狀態</th><th>Tag 上限</th><th>建立日期</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+async function createClient() {
+  const name = document.getElementById('c-name').value.trim();
+  const email = document.getElementById('c-email').value.trim();
+  const company = document.getElementById('c-company').value.trim();
+  const phone = document.getElementById('c-phone').value.trim();
+  const tier = document.getElementById('c-tier').value;
+  if (!name || !email) return toast('請填寫名稱和 Email', 'error');
+
+  try {
+    await api('/api/clients/create', 'POST', { name, email, company, phone, tier });
+    hideModal('client');
+    toast('客戶建立成功！');
+    loadClients();
+    // Clear form
+    ['c-name','c-email','c-company','c-phone'].forEach(id => document.getElementById(id).value = '');
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+// ===== API Keys =====
+async function loadKeys() {
+  try {
+    // Load all clients first for the dropdown
+    if (!clientsCache.length) {
+      const data = await api('/api/clients/list');
+      clientsCache = Array.isArray(data) ? data : (data.clients || []);
+    }
+    // Update client selector
+    const sel = document.getElementById('k-client');
+    sel.innerHTML = clientsCache.map(c => `<option value="${c.id}">${esc(c.name)} (${c.email})</option>`).join('');
+
+    // Load keys for all clients
+    let allKeys = [];
+    for (const c of clientsCache) {
+      try {
+        const data = await api(`/api/keys/list?client_id=${c.id}`);
+        const keys = Array.isArray(data) ? data : (data.keys || []);
+        keys.forEach(k => k._client_name = c.name);
+        allKeys = allKeys.concat(keys);
+      } catch {}
+    }
+    renderKeys(allKeys);
+  } catch (e) {
+    document.getElementById('keys-table').innerHTML = `<div class="empty-state">載入失敗: ${e.message}</div>`;
+  }
+}
+
+function renderKeys(keys) {
+  if (!keys.length) {
+    document.getElementById('keys-table').innerHTML = '<div class="empty-state">尚無 API Key</div>';
+    return;
+  }
+  const rows = keys.map(k => `
+    <tr>
+      <td>${esc(k._client_name || '-')}</td>
+      <td>${esc(k.name)}</td>
+      <td><span class="key-text">${esc(k.key)}</span></td>
+      <td><span class="badge badge-${k.status}">${k.status}</span></td>
+      <td>${k.daily_limit ?? '-'}</td>
+      <td>${k.last_used_at ? new Date(k.last_used_at).toLocaleString() : '從未使用'}</td>
+      <td>${k.status === 'active' ? `<button class="btn btn-sm btn-danger" onclick="revokeKey('${k.id}')">撤銷</button>` : ''}</td>
+    </tr>
+  `).join('');
+  document.getElementById('keys-table').innerHTML = `
+    <table>
+      <thead><tr><th>客戶</th><th>名稱</th><th>Key</th><th>狀態</th><th>日限額</th><th>最後使用</th><th>操作</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+async function createKey() {
+  const client_id = document.getElementById('k-client').value;
+  const name = document.getElementById('k-name').value.trim() || 'Default';
+  if (!client_id) return toast('請選擇客戶', 'error');
+
+  try {
+    const data = await api('/api/keys/create', 'POST', { client_id, name });
+    hideModal('key');
+    toast(`Key 建立成功：${data.key}`);
+    loadKeys();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function revokeKey(id) {
+  if (!confirm('確定要撤銷此 API Key？撤銷後無法恢復。')) return;
+  try {
+    await api('/api/keys/revoke', 'POST', { key_id: id });
+    toast('Key 已撤銷');
+    loadKeys();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+// ===== Usage =====
+async function loadUsage() {
+  try {
+    const stats = await api('/api/usage/stats');
+    document.getElementById('usage-stats').innerHTML = `
+      <div class="stat-card"><div class="label">今日請求</div><div class="value accent">${stats.today_requests ?? 0}</div></div>
+      <div class="stat-card"><div class="label">今日錯誤</div><div class="value" style="color:var(--danger)">${stats.today_errors ?? 0}</div></div>
+      <div class="stat-card"><div class="label">本月請求</div><div class="value purple">${stats.month_requests ?? 0}</div></div>
+    `;
+
+    if (stats.daily && stats.daily.length) {
+      const rows = stats.daily.map(d => `
+        <tr>
+          <td>${d.date}</td>
+          <td>${d.request_count}</td>
+          <td>${d.error_count}</td>
+          <td>${d.avg_response_ms ?? '-'} ms</td>
+        </tr>
+      `).join('');
+      document.getElementById('usage-daily').innerHTML = `
+        <table>
+          <thead><tr><th>日期</th><th>請求數</th><th>錯誤數</th><th>平均回應</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    } else {
+      document.getElementById('usage-daily').innerHTML = '<div class="empty-state">尚無用量紀錄</div>';
+    }
+  } catch (e) {
+    document.getElementById('usage-stats').innerHTML = '';
+    document.getElementById('usage-daily').innerHTML = '<div class="empty-state">尚無用量紀錄</div>';
+  }
+}
+
+// ===== Modals =====
+function showModal(name) {
+  document.getElementById(`modal-${name}`).classList.add('show');
+}
+function hideModal(name) {
+  document.getElementById(`modal-${name}`).classList.remove('show');
+}
+
+// ===== Utils =====
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function toast(msg, type = 'success') {
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// ===== Init =====
+if (token) {
+  showAdmin();
+} else {
+  document.getElementById('login-screen').style.display = 'flex';
+}
+</script>
+</body>
+</html>
