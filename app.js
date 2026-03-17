@@ -101,6 +101,7 @@ let tagAliases = JSON.parse(localStorage.getItem("utfind_aliases") || "{}");
 let currentLayer = null;
 let currentFilter = "all";
 let tagTypeFilter = localStorage.getItem("utfind_tag_type_filter") || "all"; // "all" | "real" | "b2b"
+let positionHistory = {}; // mac -> [{ lat, lng, time }, ...] 最近位置紀錄，用於算時速
 let historyRawData = [];     // 供匯出用
 let playbackData = [];
 let playbackIndex = 0;
@@ -662,6 +663,54 @@ function mergeB2BSimulatedData() {
   });
 }
 
+// ---------- 速度計算（根據位置歷史） ----------
+function calculateTagSpeeds() {
+  const now = Date.now();
+  latestData.forEach(tag => {
+    if (tag.lastLatitude == null || tag.lastLongitude == null) return;
+
+    const mac = tag.mac;
+    if (!positionHistory[mac]) positionHistory[mac] = [];
+
+    const history = positionHistory[mac];
+    const newPoint = {
+      lat: tag.lastLatitude,
+      lng: tag.lastLongitude,
+      time: tag.lastRequestDate ? new Date(tag.lastRequestDate).getTime() : now,
+    };
+
+    // 跟上一個點比較算速度
+    if (history.length > 0) {
+      const prev = history[history.length - 1];
+      const dist = haversine(prev.lat, prev.lng, newPoint.lat, newPoint.lng); // km
+      const timeDiffH = (newPoint.time - prev.time) / 3600000; // hours
+
+      if (timeDiffH > 0.0001 && dist > 0.001) { // 至少有移動 1 公尺
+        tag._speed = Math.round(dist / timeDiffH); // km/h
+      } else {
+        tag._speed = 0;
+      }
+
+      // 用最近 3 筆算平均速度（更平滑）
+      if (history.length >= 2) {
+        const older = history[history.length - 2];
+        const totalDist = haversine(older.lat, older.lng, newPoint.lat, newPoint.lng);
+        const totalTimeH = (newPoint.time - older.time) / 3600000;
+        if (totalTimeH > 0.0001 && totalDist > 0.001) {
+          tag._avgSpeed = Math.round(totalDist / totalTimeH);
+        }
+      }
+    } else {
+      // B2B 模擬車輛直接用預設速度
+      tag._speed = tag.speed || 0;
+    }
+
+    // 記錄新位置（保留最近 5 筆）
+    history.push(newPoint);
+    if (history.length > 5) history.shift();
+  });
+}
+
 // ---------- 取得最新定位 ----------
 async function fetchLatest() {
   // 只送真實 TAG 到 UTTEC，B2B 模擬的不送（大幅加速）
@@ -676,6 +725,9 @@ async function fetchLatest() {
 
     // 為 B2B tags 補上模擬位置（UTTEC 不會回傳它們）
     mergeB2BSimulatedData();
+
+    // 計算每個 tag 的即時速度
+    calculateTagSpeeds();
 
     injectSensorData(latestData);
     updateSensorSourceBadge();
@@ -1031,6 +1083,9 @@ function renderTagCard(tag) {
   const tempText = tag.temperature != null ? `${tag.temperature}°C` : "--";
   const humText = tag.humidity != null ? `${tag.humidity}%` : "--";
   const typeTag = tag.b2bSimulated ? (tag.b2bType === "moving" ? '<span style="color:var(--warning);font-size:10px;">🚛</span>' : '<span style="color:var(--text-muted);font-size:10px;">📍</span>') : '';
+  const speed = tag._speed || tag.speed || 0;
+  const speedColor = speed > 100 ? 'var(--danger)' : speed > 60 ? 'var(--warning)' : speed > 0 ? 'var(--success)' : 'var(--text-muted)';
+  const speedText = speed > 0 ? `${speed} km/h` : "靜止";
 
   return `
   <div class="${cardClass}" onclick="focusTag('${tag.mac}')">
@@ -1051,6 +1106,7 @@ function renderTagCard(tag) {
     <div class="tag-sensor">
       <span class="${tempClass}">🌡 ${tempText}</span>
       <span class="sensor-ok">💧 ${humText}</span>
+      <span style="color:${speedColor};font-size:11px;">🚗 ${speedText}</span>
     </div>
     <div class="tag-meta" style="margin-top:3px;">
       <span class="tag-time-ago">${timeAgo}</span>
@@ -1145,15 +1201,25 @@ function updateMarkers() {
 function createPopupContent(tag) {
   const bat = tag.lastBatteryLevel != null ? `${tag.lastBatteryLevel}%` : "--";
   const alias = tagAliases[tag.mac] ? `<p style="font-weight:600;margin-bottom:2px;">${tagAliases[tag.mac]}</p>` : "";
+  const labelName = tag.label ? `<p style="color:var(--text-muted);font-size:11px;">${tag.label}</p>` : "";
   const status = tag.status === "sos" ? '<span style="color:#ef4444;font-weight:700;">SOS</span>' : '<span style="color:#22c55e;">正常</span>';
   const temp = tag.temperature != null ? `${tag.temperature}°C` : "--";
   const hum = tag.humidity != null ? `${tag.humidity}%` : "--";
   const tempAlert = tag.temperature != null && (tag.temperature < TEMP_MIN || tag.temperature > TEMP_MAX);
   const tempStyle = tempAlert ? 'color:#ef4444;font-weight:700;' : '';
 
+  // 速度顯示
+  const speed = tag._speed || tag.speed || 0;
+  const avgSpeed = tag._avgSpeed;
+  const speedColor = speed > 100 ? '#ef4444' : speed > 60 ? '#f59e0b' : speed > 0 ? '#22c55e' : 'var(--text-muted)';
+  const speedText = speed > 0 ? `${speed} km/h` : "靜止";
+  const avgText = avgSpeed != null && avgSpeed > 0 ? ` (均速 ${avgSpeed} km/h)` : "";
+  const headingText = tag.heading ? ` · ${tag.heading}` : "";
+
   return `<div class="popup-content">
-    ${alias}<h3>${tag.mac}</h3>
+    ${alias}${labelName}<h3>${tag.mac}</h3>
     <p>狀態：${status}</p><p>電量：${bat}</p>
+    <p style="color:${speedColor};font-weight:600;">速度：${speedText}${avgText}${headingText}</p>
     <p style="${tempStyle}">溫度：${temp}${tempAlert ? " ⚠️" : ""}</p>
     <p>濕度：${hum}</p>
     <p>經緯度：${tag.lastLatitude?.toFixed(6)}, ${tag.lastLongitude?.toFixed(6)}</p>
