@@ -8,42 +8,36 @@ module.exports = async function handler(req, res) {
   const { macs } = req.query || {};
 
   if (macs) {
-    // 取得指定 MAC 的最新資料
-    const macList = macs.split(",").map(m => m.trim().toUpperCase());
-    const results = [];
+    const macList = macs.split(",").map(m => m.trim().toUpperCase()).filter(Boolean);
+    if (macList.length === 0) return json(res, []);
 
-    for (const mac of macList) {
-      const { data } = await supabase
-        .from("sensor_data")
-        .select("*")
-        .eq("mac", mac)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .single();
-      if (data) results.push(data);
-    }
-    return json(res, results);
-  }
-
-  // 取得所有 MAC 的最新一筆（用 distinct on 模擬）
-  const { data: allMacs } = await supabase
-    .from("sensor_data")
-    .select("mac")
-    .order("mac");
-
-  const uniqueMacs = [...new Set((allMacs || []).map(r => r.mac))];
-  const results = [];
-
-  for (const mac of uniqueMacs) {
-    const { data } = await supabase
+    // 用 in 一次查所有 MAC 的最新資料，取代逐一 loop
+    const { data: allData } = await supabase
       .from("sensor_data")
       .select("*")
-      .eq("mac", mac)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
-    if (data) results.push(data);
+      .in("mac", macList)
+      .order("created_at", { ascending: false });
+
+    // 每個 MAC 只保留最新一筆
+    const latest = {};
+    (allData || []).forEach(row => {
+      if (!latest[row.mac]) latest[row.mac] = row;
+    });
+
+    return json(res, Object.values(latest));
   }
 
-  json(res, results);
+  // 無指定 MAC → 取得所有 MAC 的最新一筆
+  const { data: allData } = await supabase
+    .from("sensor_data")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(1000);
+
+  const latest = {};
+  (allData || []).forEach(row => {
+    if (!latest[row.mac]) latest[row.mac] = row;
+  });
+
+  json(res, Object.values(latest));
 };

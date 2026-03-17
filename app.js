@@ -456,12 +456,17 @@ async function connect() {
     populateSensorSelects();
     loadSensorBindings();
     updateSensorSourceBadge();
-    // 初始化 tag 篩選按鈕狀態
     setTagFilter(tagTypeFilter);
 
-    await fetchLatest();
-    // 更新篩選資訊（fetchLatest 後 latestData 才有資料）
-    setTagFilter(tagTypeFilter);
+    // 先用 B2B 模擬資料快速顯示地圖，不等 UTTEC
+    mergeB2BSimulatedData();
+    injectSensorData(latestData);
+    renderTagList();
+    updateMarkers();
+    updateDashboard();
+
+    // 背景載入真實 UTTEC 資料，完成後更新
+    fetchLatest().then(() => setTagFilter(tagTypeFilter));
     startAutoRefresh();
   } catch (err) {
     status.className = "status error";
@@ -475,9 +480,10 @@ async function connect() {
 let sensorDataCache = {}; // mac -> { temperature, humidity, ... }
 let useFakeSensors = true; // Supabase 未設定時用假資料
 
-async function fetchSensorData(macs) {
+async function fetchSensorData() {
   try {
-    const resp = await fetch(`/api/sensors/latest?macs=${macs.join(",")}`);
+    // 不送 MAC 清單，直接取所有感測器最新資料（通常只有幾筆）
+    const resp = await fetch("/api/sensors/latest");
     if (!resp.ok) throw new Error("sensor API error");
     const data = await resp.json();
     if (data && data.length > 0) {
@@ -656,12 +662,11 @@ function mergeB2BSimulatedData() {
 async function fetchLatest() {
   // 只送真實 TAG 到 UTTEC，B2B 模擬的不送（大幅加速）
   const realMacs = allTags.filter(t => !t.b2bTag).map(t => t.mac);
-  const allMacs = allTags.map(t => t.mac);
   try {
     // 並行：UTTEC 查詢 + 感測器資料
     const [result] = await Promise.all([
       apiCall("latest", { macs: realMacs }),
-      fetchSensorData(allMacs),
+      fetchSensorData(),
     ]);
     latestData = Array.isArray(result) ? result : [];
 
