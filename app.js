@@ -945,6 +945,10 @@ function setTagFilter(type) {
 // ================================================================
 //  [B2] Tag 清單渲染與命名
 // ================================================================
+const TAG_LIST_PAGE_SIZE = 30;
+let _tagListRendered = 0;
+let _tagListFiltered = [];
+
 function renderTagList() {
   const container = document.getElementById("tag-list");
   let filtered = getFilteredData();
@@ -964,48 +968,86 @@ function renderTagList() {
     return;
   }
 
-  container.innerHTML = filtered.map((tag) => {
-    const bat = tag.lastBatteryLevel;
-    const batClass = bat == null ? "mid" : bat > 50 ? "high" : bat > 20 ? "mid" : "low";
-    const batText = bat == null ? "--" : `${bat}%`;
-    const timeAgo = relativeTime(tag.lastRequestDate);
-    const statusClass = tag.status || "normal";
-    const alias = tagAliases[tag.mac] || "設定名稱";
-    const tempAlert = tag.temperature != null && (tag.temperature < TEMP_MIN || tag.temperature > TEMP_MAX);
-    let cardClass = "tag-card";
-    if (statusClass === "sos") cardClass += " sos-card";
-    if (tempAlert) cardClass += " temp-alert-card";
+  // 分頁載入：先渲染前 30 個，滾動時載入更多
+  _tagListFiltered = filtered;
+  _tagListRendered = Math.min(TAG_LIST_PAGE_SIZE, filtered.length);
+  const batch = filtered.slice(0, _tagListRendered);
 
-    const tempClass = tempAlert ? "sensor-alert" : "sensor-ok";
-    const tempText = tag.temperature != null ? `${tag.temperature}°C` : "--";
-    const humText = tag.humidity != null ? `${tag.humidity}%` : "--";
-
-    return `
-    <div class="${cardClass}" onclick="focusTag('${tag.mac}')">
-      <div class="tag-name-row">
-        <span class="mac">${tag.mac}</span>
-        <span class="tag-alias" onclick="event.stopPropagation();renameTag('${tag.mac}')">${alias}</span>
-      </div>
-      <div class="tag-meta">
-        <span class="tag-status ${statusClass}">
-          <span class="dot"></span>
-          ${statusClass === "sos" ? "SOS" : "正常"}
-        </span>
-        <span class="battery">
-          <span class="battery-bar"><span class="battery-fill ${batClass}" style="width:${bat ?? 50}%"></span></span>
-          ${batText}
-        </span>
-      </div>
-      <div class="tag-sensor">
-        <span class="${tempClass}">🌡 ${tempText}</span>
-        <span class="sensor-ok">💧 ${humText}</span>
-      </div>
-      <div class="tag-meta" style="margin-top:3px;">
-        <span class="tag-time-ago">${timeAgo}</span>
-        <span>${tag.lastLatitude?.toFixed(5)}, ${tag.lastLongitude?.toFixed(5)}</span>
-      </div>
+  let html = batch.map(renderTagCard).join("");
+  if (filtered.length > _tagListRendered) {
+    html += `<div id="tag-load-more" class="empty-state" style="cursor:pointer;padding:12px;" onclick="loadMoreTags()">
+      顯示更多（已載入 ${_tagListRendered}/${filtered.length}）
     </div>`;
-  }).join("");
+  }
+  container.innerHTML = html;
+  return;
+}
+
+function loadMoreTags() {
+  const container = document.getElementById("tag-list");
+  const loadMoreEl = document.getElementById("tag-load-more");
+  if (loadMoreEl) loadMoreEl.remove();
+
+  const nextBatch = _tagListFiltered.slice(_tagListRendered, _tagListRendered + TAG_LIST_PAGE_SIZE);
+  _tagListRendered += nextBatch.length;
+
+  const fragment = document.createElement("div");
+  fragment.innerHTML = nextBatch.map(renderTagCard).join("");
+  while (fragment.firstChild) container.appendChild(fragment.firstChild);
+
+  if (_tagListFiltered.length > _tagListRendered) {
+    const more = document.createElement("div");
+    more.id = "tag-load-more";
+    more.className = "empty-state";
+    more.style.cssText = "cursor:pointer;padding:12px;";
+    more.onclick = loadMoreTags;
+    more.textContent = `顯示更多（已載入 ${_tagListRendered}/${_tagListFiltered.length}）`;
+    container.appendChild(more);
+  }
+}
+
+function renderTagCard(tag) {
+  const bat = tag.lastBatteryLevel;
+  const batClass = bat == null ? "mid" : bat > 50 ? "high" : bat > 20 ? "mid" : "low";
+  const batText = bat == null ? "--" : `${bat}%`;
+  const timeAgo = relativeTime(tag.lastRequestDate);
+  const statusClass = tag.status || "normal";
+  const alias = tagAliases[tag.mac] || tag.label || "設定名稱";
+  const tempAlert = tag.temperature != null && (tag.temperature < TEMP_MIN || tag.temperature > TEMP_MAX);
+  let cardClass = "tag-card";
+  if (statusClass === "sos") cardClass += " sos-card";
+  if (tempAlert) cardClass += " temp-alert-card";
+
+  const tempClass = tempAlert ? "sensor-alert" : "sensor-ok";
+  const tempText = tag.temperature != null ? `${tag.temperature}°C` : "--";
+  const humText = tag.humidity != null ? `${tag.humidity}%` : "--";
+  const typeTag = tag.b2bSimulated ? (tag.b2bType === "moving" ? '<span style="color:var(--warning);font-size:10px;">🚛</span>' : '<span style="color:var(--text-muted);font-size:10px;">📍</span>') : '';
+
+  return `
+  <div class="${cardClass}" onclick="focusTag('${tag.mac}')">
+    <div class="tag-name-row">
+      <span class="mac">${typeTag} ${tag.mac}</span>
+      <span class="tag-alias" onclick="event.stopPropagation();renameTag('${tag.mac}')">${alias}</span>
+    </div>
+    <div class="tag-meta">
+      <span class="tag-status ${statusClass}">
+        <span class="dot"></span>
+        ${statusClass === "sos" ? "SOS" : "正常"}
+      </span>
+      <span class="battery">
+        <span class="battery-bar"><span class="battery-fill ${batClass}" style="width:${bat ?? 50}%"></span></span>
+        ${batText}
+      </span>
+    </div>
+    <div class="tag-sensor">
+      <span class="${tempClass}">🌡 ${tempText}</span>
+      <span class="sensor-ok">💧 ${humText}</span>
+    </div>
+    <div class="tag-meta" style="margin-top:3px;">
+      <span class="tag-time-ago">${timeAgo}</span>
+      <span>${tag.lastLatitude?.toFixed(5)}, ${tag.lastLongitude?.toFixed(5)}</span>
+    </div>
+  </div>`;
 }
 
 // ---------- Tag 命名 ----------
@@ -1022,25 +1064,73 @@ function renameTag(mac) {
 // ================================================================
 //  [B3] 地圖 Markers 更新
 // ================================================================
-function updateMarkers() {
-  Object.values(markers).forEach((m) => map.removeLayer(m));
-  markers = {};
-  const bounds = [];
+let _markerCluster = null;
 
-  // 套用 tag 類型篩選到地圖
+function updateMarkers() {
+  // 套用 tag 類型篩選
   const filtered = tagTypeFilter === "real" ? latestData.filter(t => !t.b2bSimulated)
     : tagTypeFilter === "b2b" ? latestData.filter(t => t.b2bSimulated)
     : latestData;
 
+  const newMacs = new Set();
+  const bounds = [];
+
   filtered.forEach((tag) => {
     if (tag.lastLatitude == null || tag.lastLongitude == null) return;
-    const marker = L.marker([tag.lastLatitude, tag.lastLongitude], { icon: createIcon(tag.status) })
-      .addTo(map).bindPopup(createPopupContent(tag));
-    markers[tag.mac] = marker;
-    bounds.push([tag.lastLatitude, tag.lastLongitude]);
+    newMacs.add(tag.mac);
+    const pos = [tag.lastLatitude, tag.lastLongitude];
+
+    if (markers[tag.mac]) {
+      // 已有 marker → 更新位置（不重建）
+      markers[tag.mac].setLatLng(pos);
+      markers[tag.mac].setIcon(createIcon(tag.status));
+      markers[tag.mac]._popup && markers[tag.mac].setPopupContent(createPopupContent(tag));
+    } else {
+      // 新 marker
+      const marker = L.marker(pos, { icon: createIcon(tag.status) })
+        .bindPopup(createPopupContent(tag));
+      markers[tag.mac] = marker;
+    }
+    bounds.push(pos);
   });
 
-  if (bounds.length > 0) map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
+  // 移除不再顯示的 marker
+  Object.keys(markers).forEach(mac => {
+    if (!newMacs.has(mac)) {
+      map.removeLayer(markers[mac]);
+      delete markers[mac];
+    }
+  });
+
+  // 用 MarkerCluster 批次加入（300+ 點效能大幅提升）
+  if (_markerCluster) map.removeLayer(_markerCluster);
+
+  if (clusterOn || Object.keys(markers).length > 50) {
+    _markerCluster = L.markerClusterGroup({
+      maxClusterRadius: 50,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      chunkedLoading: true,
+      chunkInterval: 100,
+      chunkDelay: 10,
+    });
+    Object.values(markers).forEach(m => {
+      if (map.hasLayer(m)) map.removeLayer(m);
+      _markerCluster.addLayer(m);
+    });
+    map.addLayer(_markerCluster);
+  } else {
+    _markerCluster = null;
+    Object.values(markers).forEach(m => {
+      if (!map.hasLayer(m)) m.addTo(map);
+    });
+  }
+
+  // 只在首次載入時 fitBounds
+  if (bounds.length > 0 && !window._initialBoundsFit) {
+    map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
+    window._initialBoundsFit = true;
+  }
 }
 
 function createPopupContent(tag) {
@@ -1747,21 +1837,8 @@ function toggleHeatmap() {
 function toggleClustering() {
   clusterOn = !clusterOn;
   document.getElementById("btn-cluster").classList.toggle("active", clusterOn);
-
-  if (clusterOn) {
-    clusterGroup = L.markerClusterGroup();
-    Object.values(markers).forEach((m) => {
-      map.removeLayer(m);
-      clusterGroup.addLayer(m);
-    });
-    map.addLayer(clusterGroup);
-  } else {
-    if (clusterGroup) {
-      map.removeLayer(clusterGroup);
-      Object.values(markers).forEach((m) => m.addTo(map));
-      clusterGroup = null;
-    }
-  }
+  // 現在預設使用 MarkerCluster，切換時重新渲染
+  updateMarkers();
 }
 
 // ---------- 速度計算 (歷史軌跡) ----------
