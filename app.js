@@ -623,10 +623,14 @@ function mergeB2BSimulatedData() {
       }
     }
 
+    const parsedLat = parseFloat(lat.toFixed(6));
+    const parsedLng = parseFloat(lng.toFixed(6));
     latestData.push({
       mac: tag.mac,
-      latitude: parseFloat(lat.toFixed(6)),
-      longitude: parseFloat(lng.toFixed(6)),
+      latitude: parsedLat,
+      longitude: parsedLng,
+      lastLatitude: parsedLat,
+      lastLongitude: parsedLng,
       lastBatteryLevel: battery,
       lastRequestDate: new Date(Date.now() - Math.floor(Math.random() * 5) * 60000).toISOString(),
       status: battery < 20 ? "lowBattery" : "normal",
