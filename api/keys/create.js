@@ -1,4 +1,4 @@
-const { nanoid } = require("nanoid");
+const crypto = require("crypto");
 const { supabase } = require("../../lib/supabase");
 const { getAdminFromReq, cors, json, error } = require("../../lib/auth");
 
@@ -19,7 +19,7 @@ module.exports = async function handler(req, res) {
   const { count } = await supabase.from("api_keys").select("*", { count: "exact", head: true }).eq("client_id", client_id).eq("status", "active");
   if (client.max_keys && count >= client.max_keys) return error(res, `已達 API Key 上限 (${client.max_keys})`);
 
-  const key = `utk_${nanoid(32)}`;
+  const key = `utk_${crypto.randomBytes(24).toString("base64url")}`;
   const expires_at = expires_days ? new Date(Date.now() + expires_days * 86400000).toISOString() : null;
 
   const { data, error: dbErr } = await supabase
