@@ -415,6 +415,18 @@
       <!-- ─── 裝置管理 ─── -->
       <div class="section-group-title">裝置管理</div>
 
+      <!-- Tag 顯示篩選 -->
+      <div class="report-section">
+        <div class="section-title">Tag 顯示篩選</div>
+        <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">快速切換地圖和列表中顯示的 Tag 類型</p>
+        <div class="btn-row" id="tag-filter-btns">
+          <button class="btn-accent" id="filter-all" onclick="setTagFilter('all')" style="flex:1;">全部</button>
+          <button class="btn-ghost" id="filter-real" onclick="setTagFilter('real')" style="flex:1;">僅實體</button>
+          <button class="btn-ghost" id="filter-b2b" onclick="setTagFilter('b2b')" style="flex:1;">僅模擬</button>
+        </div>
+        <div id="tag-filter-info" style="font-size:11px;color:var(--text-muted);margin-top:8px;"></div>
+      </div>
+
       <!-- 手動 Tag -->
       <div class="report-section">
         <div class="section-title">手動新增 Tag</div>

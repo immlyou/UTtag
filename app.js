@@ -100,6 +100,7 @@ let autoRefreshCountdown = 0;
 let tagAliases = JSON.parse(localStorage.getItem("utfind_aliases") || "{}");
 let currentLayer = null;
 let currentFilter = "all";
+let tagTypeFilter = localStorage.getItem("utfind_tag_type_filter") || "all"; // "all" | "real" | "b2b"
 let historyRawData = [];     // 供匯出用
 let playbackData = [];
 let playbackIndex = 0;
@@ -455,8 +456,12 @@ async function connect() {
     populateSensorSelects();
     loadSensorBindings();
     updateSensorSourceBadge();
+    // 初始化 tag 篩選按鈕狀態
+    setTagFilter(tagTypeFilter);
 
     await fetchLatest();
+    // 更新篩選資訊（fetchLatest 後 latestData 才有資料）
+    setTagFilter(tagTypeFilter);
     startAutoRefresh();
   } catch (err) {
     status.className = "status error";
@@ -899,12 +904,42 @@ function filterTags(filter, btn) {
 }
 
 function getFilteredData() {
-  if (currentFilter === "all") return latestData;
-  if (currentFilter === "sos") return latestData.filter((t) => t.status === "sos");
-  if (currentFilter === "lowbat") return latestData.filter((t) => t.lastBatteryLevel != null && t.lastBatteryLevel <= 20);
-  if (currentFilter === "normal") return latestData.filter((t) => t.status !== "sos");
-  if (currentFilter === "tempalert") return latestData.filter((t) => t.temperature != null && (t.temperature < TEMP_MIN || t.temperature > TEMP_MAX));
-  return latestData;
+  // 先依 tag 類型篩選
+  let data = latestData;
+  if (tagTypeFilter === "real") data = data.filter(t => !t.b2bSimulated);
+  else if (tagTypeFilter === "b2b") data = data.filter(t => t.b2bSimulated);
+
+  // 再依狀態篩選
+  if (currentFilter === "all") return data;
+  if (currentFilter === "sos") return data.filter((t) => t.status === "sos");
+  if (currentFilter === "lowbat") return data.filter((t) => t.lastBatteryLevel != null && t.lastBatteryLevel <= 20);
+  if (currentFilter === "normal") return data.filter((t) => t.status !== "sos");
+  if (currentFilter === "tempalert") return data.filter((t) => t.temperature != null && (t.temperature < TEMP_MIN || t.temperature > TEMP_MAX));
+  return data;
+}
+
+function setTagFilter(type) {
+  tagTypeFilter = type;
+  localStorage.setItem("utfind_tag_type_filter", type);
+
+  // 更新按鈕狀態
+  document.querySelectorAll("#tag-filter-btns button").forEach(btn => {
+    btn.className = btn.id === `filter-${type}` ? "btn-accent" : "btn-ghost";
+  });
+
+  // 更新資訊
+  const realCount = latestData.filter(t => !t.b2bSimulated).length;
+  const b2bCount = latestData.filter(t => t.b2bSimulated).length;
+  const info = document.getElementById("tag-filter-info");
+  if (info) {
+    const showing = type === "all" ? latestData.length : type === "real" ? realCount : b2bCount;
+    info.textContent = `顯示 ${showing} / ${latestData.length} 個 Tag（實體 ${realCount}，模擬 ${b2bCount}）`;
+  }
+
+  // 重新渲染
+  renderTagList();
+  updateMarkers();
+  updateDashboard();
 }
 
 // ================================================================
@@ -992,7 +1027,12 @@ function updateMarkers() {
   markers = {};
   const bounds = [];
 
-  latestData.forEach((tag) => {
+  // 套用 tag 類型篩選到地圖
+  const filtered = tagTypeFilter === "real" ? latestData.filter(t => !t.b2bSimulated)
+    : tagTypeFilter === "b2b" ? latestData.filter(t => t.b2bSimulated)
+    : latestData;
+
+  filtered.forEach((tag) => {
     if (tag.lastLatitude == null || tag.lastLongitude == null) return;
     const marker = L.marker([tag.lastLatitude, tag.lastLongitude], { icon: createIcon(tag.status) })
       .addTo(map).bindPopup(createPopupContent(tag));
