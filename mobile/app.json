@@ -1,0 +1,96 @@
+{
+  "expo": {
+    "name": "UTtag",
+    "slug": "uttag-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#3B82F6"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.uttec.uttag",
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app uses the camera to scan QR codes on tags.",
+        "NSLocationWhenInUseUsageDescription": "This app uses your location to find nearby tags and track deliveries.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app uses your location in the background for real-time tracking.",
+        "NSFaceIDUsageDescription": "Use Face ID to securely log in.",
+        "UIBackgroundModes": [
+          "location",
+          "remote-notification"
+        ]
+      },
+      "config": {
+        "googleMapsApiKey": "YOUR_GOOGLE_MAPS_API_KEY"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#3B82F6"
+      },
+      "package": "com.uttec.uttag",
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE"
+      ],
+      "googleServicesFile": "./google-services.json",
+      "config": {
+        "googleMaps": {
+          "apiKey": "YOUR_GOOGLE_MAPS_API_KEY"
+        }
+      }
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow UTtag to access your camera for QR code scanning."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow UTtag to use your location for real-time tracking.",
+          "isAndroidBackgroundLocationEnabled": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#3B82F6",
+          "sounds": [
+            "./assets/sounds/alert_high.wav",
+            "./assets/sounds/sos_alarm.wav",
+            "./assets/sounds/notification.wav"
+          ]
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow UTtag to use Face ID for secure login."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "YOUR_EAS_PROJECT_ID"
+      }
+    },
+    "owner": "uttec"
+  }
+}
