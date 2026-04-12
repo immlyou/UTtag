@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh-TW" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UTtag — 客戶登入</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f172a;
+      --surface:   #1e293b;
+      --border:    #334155;
+      --text:      #f1f5f9;
+      --text-muted:#94a3b8;
+      --primary:   #3b82f6;
+      --primary-h: #2563eb;
+      --error-bg:  #450a0a;
+      --error-text:#fca5a5;
+      --radius:    8px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 40px 36px;
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .logo {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .logo-mark {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 56px;
+      height: 56px;
+      background: var(--primary);
+      border-radius: 14px;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -1px;
+      color: #fff;
+      margin-bottom: 12px;
+    }
+
+    .logo h1 {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .logo p {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .field {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 14px;
+      padding: 10px 12px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    input:focus {
+      border-color: var(--primary);
+    }
+
+    input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .btn-submit {
+      width: 100%;
+      background: var(--primary);
+      border: none;
+      border-radius: var(--radius);
+      color: #fff;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 11px;
+      margin-top: 8px;
+      transition: background 0.15s;
+    }
+
+    .btn-submit:hover:not(:disabled) {
+      background: var(--primary-h);
+    }
+
+    .btn-submit:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .error-box {
+      background: var(--error-bg);
+      border: 1px solid #7f1d1d;
+      border-radius: var(--radius);
+      color: var(--error-text);
+      font-size: 13px;
+      padding: 10px 12px;
+      margin-top: 16px;
+      display: none;
+    }
+
+    .error-box.visible {
+      display: block;
+    }
+
+    .admin-link {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .admin-link a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+
+    .admin-link a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <div class="logo-mark">UT</div>
+      <h1>UTtag 客戶入口</h1>
+      <p>請登入您的帳號</p>
+    </div>
+
+    <form id="login-form" novalidate>
+      <div class="field">
+        <label for="email">電子信箱</label>
+        <input
+          type="email"
+          id="email"
+          name="email"
+          placeholder="name@company.com"
+          autocomplete="email"
+          required
+        />
+      </div>
+
+      <div class="field">
+        <label for="password">密碼</label>
+        <input
+          type="password"
+          id="password"
+          name="password"
+          placeholder="••••••••"
+          autocomplete="current-password"
+          required
+        />
+      </div>
+
+      <button type="submit" class="btn-submit" id="btn-submit">登入</button>
+      <div class="error-box" id="error-box" role="alert"></div>
+    </form>
+
+    <div class="admin-link">
+      <a href="/">管理員入口</a>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      var form   = document.getElementById("login-form");
+      var btn    = document.getElementById("btn-submit");
+      var errBox = document.getElementById("error-box");
+
+      function showError(msg) {
+        errBox.textContent = msg;
+        errBox.classList.add("visible");
+      }
+
+      function clearError() {
+        errBox.textContent = "";
+        errBox.classList.remove("visible");
+      }
+
+      function setLoading(on) {
+        btn.disabled = on;
+        btn.textContent = on ? "登入中..." : "登入";
+      }
+
+      function errorMessage(status, body) {
+        if (status === 423) return "帳號已鎖定，30 分鐘後再試。";
+        if (status === 429) return "請求次數過多，請稍後再試。";
+        if (status === 403) return body.error || "帳號或組織已停用，請聯絡管理員。";
+        if (status === 401) return "電子信箱或密碼錯誤。";
+        if (status === 400) return "請填寫電子信箱與密碼。";
+        return body.error || ("登入失敗（" + status + "），請稍後再試。");
+      }
+
+      form.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        clearError();
+
+        var email    = document.getElementById("email").value.trim();
+        var password = document.getElementById("password").value;
+
+        if (!email || !password) {
+          showError("請填寫電子信箱與密碼。");
+          return;
+        }
+
+        setLoading(true);
+
+        try {
+          var resp = await fetch("/api/tenant/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: email, password: password })
+          });
+
+          var body;
+          try { body = await resp.json(); } catch (_) { body = {}; }
+
+          if (!resp.ok) {
+            showError(errorMessage(resp.status, body));
+            return;
+          }
+
+          // Persist session
+          localStorage.setItem("tenant_token", body.token);
+          localStorage.setItem("tenant_user", JSON.stringify(body.user));
+
+          // Route by industry
+          var industry = (body.user && body.user.industry) ? body.user.industry : "generic";
+          window.location.href = "/?industry=" + encodeURIComponent(industry);
+
+        } catch (err) {
+          showError("網路錯誤，請確認連線後再試。");
+        } finally {
+          setLoading(false);
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
