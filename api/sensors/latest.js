@@ -1,14 +1,58 @@
 const { supabase } = require("../../lib/supabase");
 const { getAdminFromReq, getClientFromApiKey, cors, json, error } = require("../../lib/auth");
+const { dualAuth } = require("../../lib/auth-middleware");
+
+// Fetch latest sensor readings scoped to a specific client's bound MACs
+async function handleTenantLatest(req, res, scopeClientId) {
+  const { macs: macsParam } = req.query || {};
+
+  // Get MACs bound to this client
+  const { data: boundTags } = await supabase
+    .from("client_tags")
+    .select("mac")
+    .eq("client_id", scopeClientId);
+
+  const boundMacs = (boundTags || []).map(t => t.mac);
+  if (boundMacs.length === 0) return json(res, [], 200, req);
+
+  // If caller specified MACs, intersect with their bound MACs
+  let allowedMacs = boundMacs;
+  if (macsParam) {
+    const requested = macsParam.split(",").map(m => m.trim().toUpperCase()).filter(Boolean);
+    allowedMacs = boundMacs.filter(m => requested.includes(m));
+    if (allowedMacs.length === 0) return json(res, [], 200, req);
+  }
+
+  const { data: allData } = await supabase
+    .from("sensor_data")
+    .select("*")
+    .in("mac", allowedMacs)
+    .order("created_at", { ascending: false });
+
+  const latest = {};
+  (allData || []).forEach(row => {
+    if (!latest[row.mac]) latest[row.mac] = row;
+  });
+
+  return json(res, Object.values(latest), 200, req);
+}
 
 module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") { cors(res, req); return res.status(200).end(); }
   if (req.method !== "GET") return error(res, "Method not allowed", 405, req);
 
-  // 讀取操作需要 admin 或 API Key 認證
-  const admin = getAdminFromReq(req);
-  const apiKeyData = !admin ? await getClientFromApiKey(req) : null;
-  if (!admin && !apiKeyData) return error(res, "未授權：需要 Admin Token 或 API Key", 401, req);
+  // Try API Key first (X-API-Key header — existing auth path, unrestricted)
+  const apiKeyData = await getClientFromApiKey(req);
+  if (!apiKeyData) {
+    // No API key — require admin or tenant JWT
+    const caller = await dualAuth(req, res);
+    if (!caller) return;
+
+    if (caller.kind === "tenant") {
+      return handleTenantLatest(req, res, caller.scopeClientId);
+    }
+    // Admin: fall through to existing unrestricted query below
+  }
 
   const { macs } = req.query || {};
 
