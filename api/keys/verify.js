@@ -2,11 +2,11 @@ const { supabase } = require("../../lib/supabase");
 const { cors, json, error } = require("../../lib/auth");
 
 module.exports = async function handler(req, res) {
-  if (req.method === "OPTIONS") { cors(res); return res.status(200).end(); }
-  if (req.method !== "POST") return error(res, "Method not allowed", 405);
+  if (req.method === "OPTIONS") { cors(res, req); return res.status(200).end(); }
+  if (req.method !== "POST") return error(res, "Method not allowed", 405, req);
 
   const { key } = req.body || {};
-  if (!key) return error(res, "缺少 API Key");
+  if (!key) return error(res, "缺少 API Key", 400, req);
 
   const { data } = await supabase
     .from("api_keys")
@@ -14,10 +14,10 @@ module.exports = async function handler(req, res) {
     .eq("key", key)
     .single();
 
-  if (!data) return error(res, "無效的 API Key", 401);
-  if (data.status !== "active") return error(res, `Key 已${data.status === "revoked" ? "撤銷" : "過期"}`, 403);
-  if (data.expires_at && new Date(data.expires_at) < new Date()) return error(res, "Key 已過期", 403);
-  if (data.clients?.status !== "active") return error(res, "客戶帳號已停用", 403);
+  if (!data) return error(res, "無效的 API Key", 401, req);
+  if (data.status !== "active") return error(res, `Key 已${data.status === "revoked" ? "撤銷" : "過期"}`, 403, req);
+  if (data.expires_at && new Date(data.expires_at) < new Date()) return error(res, "Key 已過期", 403, req);
+  if (data.clients?.status !== "active") return error(res, "客戶帳號已停用", 403, req);
 
   // 檢查今日用量
   const today = new Date().toISOString().slice(0, 10);
@@ -41,5 +41,5 @@ module.exports = async function handler(req, res) {
     daily_used: todayCount,
     daily_remaining: remaining,
     client: data.clients,
-  });
+  }, 200, req);
 };

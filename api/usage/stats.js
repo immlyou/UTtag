@@ -2,11 +2,11 @@ const { supabase } = require("../../lib/supabase");
 const { getAdminFromReq, cors, json, error } = require("../../lib/auth");
 
 module.exports = async function handler(req, res) {
-  if (req.method === "OPTIONS") { cors(res); return res.status(200).end(); }
-  if (req.method !== "GET") return error(res, "Method not allowed", 405);
+  if (req.method === "OPTIONS") { cors(res, req); return res.status(200).end(); }
+  if (req.method !== "GET") return error(res, "Method not allowed", 405, req);
 
   const admin = getAdminFromReq(req);
-  if (!admin) return error(res, "未授權", 401);
+  if (!admin) return error(res, "未授權", 401, req);
 
   const { client_id, api_key_id, days } = req.query || {};
   const range = parseInt(days) || 30;
@@ -58,5 +58,5 @@ module.exports = async function handler(req, res) {
     daily: daily || [],
     top_clients: topClients,
     range_days: range,
-  });
+  }, 200, req);
 };
