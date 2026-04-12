@@ -148,6 +148,11 @@
   </style>
 </head>
 <body>
+  <div id="impersonation-banner" class="hidden" style="background:#fde68a;color:#78350f;padding:10px 24px;font-size:13px;border-bottom:1px solid #f59e0b;display:flex;justify-content:space-between;align-items:center">
+    <span id="impersonation-text"></span>
+    <button id="btn-end-impersonation" style="background:#b45309;color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font:inherit">結束代入</button>
+  </div>
+
   <header class="top">
     <h1 id="welcome">載入中…</h1>
     <p id="subtitle"></p>
@@ -188,17 +193,58 @@
       <div class="card">
         <h2>
           <span>租戶成員<span id="users-note" class="ago" style="margin-left:12px;"></span></span>
-          <span id="users-count" class="count-badge">0</span>
+          <span>
+            <button id="btn-new-member" class="hidden" style="background:var(--uttag-primary);color:#fff;border:none;padding:6px 12px;border-radius:5px;cursor:pointer;font:inherit;font-size:12px">+ 新增成員</button>
+            <span id="users-count" class="count-badge" style="margin-left:8px">0</span>
+          </span>
         </h2>
         <div id="users-container"><div class="loading">載入成員清單…</div></div>
       </div>
     </section>
 
+    <!-- New-member modal -->
+    <div id="member-modal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:100;display:flex;align-items:center;justify-content:center">
+      <div style="background:#fff;border-radius:10px;padding:24px;max-width:420px;width:90%">
+        <h3 style="margin:0 0 16px">新增成員</h3>
+        <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Email</label>
+        <input id="nm-email" type="email" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:10px;font:inherit" />
+        <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">姓名</label>
+        <input id="nm-name" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:10px;font:inherit" />
+        <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">角色</label>
+        <select id="nm-role" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:10px;font:inherit">
+          <option value="user">user (檢視者)</option>
+          <option value="operator">operator (操作員)</option>
+          <option value="admin">admin (管理員)</option>
+        </select>
+        <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">初始密碼</label>
+        <input id="nm-pass" type="password" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:12px;font:inherit" />
+        <div id="nm-err" style="color:#b91c1c;font-size:12px;margin-bottom:8px"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button id="nm-cancel" style="background:#fff;color:#374151;border:1px solid var(--border);padding:6px 14px;border-radius:5px;cursor:pointer;font:inherit">取消</button>
+          <button id="nm-submit" style="background:var(--uttag-primary);color:#fff;border:none;padding:6px 14px;border-radius:5px;cursor:pointer;font:inherit">建立</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Profile -->
     <section id="tab-profile" class="tab-panel">
-      <div class="card profile-card">
+      <div class="card profile-card" style="margin-bottom:16px">
         <h2><span>我的帳號</span></h2>
         <div id="profile-container"><div class="loading">載入中…</div></div>
+      </div>
+
+      <div class="card profile-card">
+        <h2><span>修改密碼</span></h2>
+        <div style="padding:16px">
+          <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">目前密碼</label>
+          <input id="cp-current" type="password" autocomplete="current-password" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:10px;font:inherit" />
+          <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">新密碼（至少 8 字元）</label>
+          <input id="cp-new" type="password" autocomplete="new-password" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:10px;font:inherit" />
+          <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">確認新密碼</label>
+          <input id="cp-confirm" type="password" autocomplete="new-password" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:12px;font:inherit" />
+          <div id="cp-msg" style="font-size:12px;margin-bottom:8px"></div>
+          <button id="btn-change-password" style="background:var(--uttag-primary);color:#fff;border:none;padding:8px 16px;border-radius:5px;cursor:pointer;font:inherit">變更密碼</button>
+        </div>
       </div>
     </section>
   </main>
@@ -425,6 +471,99 @@
       }
     }
 
+    // ---------- Role-aware UI ----------
+    let currentRole = null;
+
+    function paintRoleUI(me) {
+      currentRole = me?.user?.role;
+      // Only admin sees the "+ 新增成員" button.
+      const newBtn = document.getElementById("btn-new-member");
+      if (currentRole === "admin") newBtn.classList.remove("hidden");
+      else newBtn.classList.add("hidden");
+
+      // Impersonation banner.
+      const imp = me?.impersonated_by;
+      if (imp) {
+        document.getElementById("impersonation-text").textContent =
+          "你正在以 " + (me.user?.email || "") + " 身份預覽（由 admin " +
+          (imp.admin_username || imp.admin_id || "?") + " 代入中）— token 於 15 分鐘後過期";
+        document.getElementById("impersonation-banner").classList.remove("hidden");
+      }
+    }
+
+    // ---------- New member modal ----------
+    function bindMemberModal() {
+      const modal = document.getElementById("member-modal");
+      const open  = () => {
+        modal.classList.remove("hidden");
+        document.getElementById("nm-err").textContent = "";
+      };
+      const close = () => modal.classList.add("hidden");
+      document.getElementById("btn-new-member").addEventListener("click", open);
+      document.getElementById("nm-cancel").addEventListener("click", close);
+      document.getElementById("nm-submit").addEventListener("click", async () => {
+        const email = document.getElementById("nm-email").value.trim();
+        const name  = document.getElementById("nm-name").value.trim();
+        const role  = document.getElementById("nm-role").value;
+        const pass  = document.getElementById("nm-pass").value;
+        const err   = document.getElementById("nm-err");
+        err.textContent = "";
+        if (!email || !name || !pass) { err.textContent = "Email、姓名、密碼皆為必填"; return; }
+        if (pass.length < 8) { err.textContent = "密碼需至少 8 字元"; return; }
+        try {
+          const r = await fetch("/api/tenant/users", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...TENANT.getAuthHeader() },
+            body: JSON.stringify({ email, name, role, password: pass }),
+          });
+          const body = await r.json();
+          if (!r.ok) throw new Error(body.error || "HTTP " + r.status);
+          close();
+          usersLoaded = false;
+          loadUsers();
+          ["nm-email","nm-name","nm-pass"].forEach(id => document.getElementById(id).value = "");
+        } catch (e) {
+          err.textContent = e.message;
+        }
+      });
+    }
+
+    // ---------- Change password ----------
+    function bindChangePassword() {
+      document.getElementById("btn-change-password").addEventListener("click", async () => {
+        const cur  = document.getElementById("cp-current").value;
+        const next = document.getElementById("cp-new").value;
+        const conf = document.getElementById("cp-confirm").value;
+        const msg  = document.getElementById("cp-msg");
+        msg.style.color = "#b91c1c";
+        if (!cur || !next) { msg.textContent = "請填寫目前與新密碼"; return; }
+        if (next.length < 8) { msg.textContent = "新密碼需至少 8 字元"; return; }
+        if (next !== conf) { msg.textContent = "兩次輸入的新密碼不一致"; return; }
+        try {
+          const r = await fetch("/api/tenant/auth/change-password", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...TENANT.getAuthHeader() },
+            body: JSON.stringify({ current_password: cur, new_password: next }),
+          });
+          const body = await r.json();
+          if (!r.ok) throw new Error(body.error || "HTTP " + r.status);
+          msg.style.color = "#166534";
+          msg.textContent = "密碼已更新，下次登入請用新密碼";
+          ["cp-current","cp-new","cp-confirm"].forEach(id => document.getElementById(id).value = "");
+        } catch (e) {
+          msg.textContent = "變更失敗：" + e.message;
+        }
+      });
+    }
+
+    // ---------- End impersonation ----------
+    document.getElementById("btn-end-impersonation").addEventListener("click", () => {
+      localStorage.removeItem("tenant_token");
+      localStorage.removeItem("tenant_user");
+      localStorage.removeItem("uttag_industry_ctx");
+      window.location.href = "/admin-impersonate.html";
+    });
+
     // ---------- Bootstrap ----------
     async function bootstrap() {
       if (!TENANT || !TENANT.isLoggedIn()) return;
@@ -440,6 +579,7 @@
           (me?.industry_defaults?.display_name || me?.industry || "") +
           "　·　角色 " + (me?.user?.role || "");
 
+        paintRoleUI(me);
         renderDevices(devices || []);
         renderMap(devices || []);
 
@@ -451,7 +591,11 @@
       }
     }
 
-    document.addEventListener("DOMContentLoaded", bootstrap);
+    document.addEventListener("DOMContentLoaded", () => {
+      bindMemberModal();
+      bindChangePassword();
+      bootstrap();
+    });
   </script>
 </body>
 </html>

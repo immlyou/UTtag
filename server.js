@@ -9,7 +9,7 @@ const PORT = 3030;
 
 // 只允許存取前端需要的靜態檔案，避免暴露敏感檔案
 const ALLOWED_STATIC = [
-  "index.html", "admin.html", "tenant-login.html", "tenant.html", "app.js", "style.css",
+  "index.html", "admin.html", "tenant-login.html", "tenant.html", "admin-impersonate.html", "app.js", "style.css",
   "sw.js", "manifest.json",
 ];
 // Directory prefixes that are safe to expose (served read-only by express.static).
@@ -59,6 +59,7 @@ app.use("/api/schedules", (req, res, next) => {
 // Admin routes (Super Admin only)
 app.use("/api/admin/clients", require("./api/admin/clients"));
 app.use("/api/admin/analytics", require("./api/admin/analytics"));
+app.use("/api/admin/impersonate", require("./api/admin/impersonate"));
 
 // Tenant routes (Tenant Users)
 app.use("/api/tenant/auth", require("./api/tenant/auth"));
