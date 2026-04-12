@@ -1,14 +1,35 @@
 const { supabase } = require("../../lib/supabase");
 const { getAdminFromReq, getClientFromApiKey, cors, json, error } = require("../../lib/auth");
+const { dualAuth } = require("../../lib/auth-middleware");
 
 module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") { cors(res, req); return res.status(200).end(); }
   if (req.method !== "GET") return error(res, "Method not allowed", 405, req);
 
-  // 讀取操作需要 admin 或 API Key 認證
-  const admin = getAdminFromReq(req);
-  const apiKeyData = !admin ? await getClientFromApiKey(req) : null;
-  if (!admin && !apiKeyData) return error(res, "未授權：需要 Admin Token 或 API Key", 401, req);
+  // Try API Key first (X-API-Key header — existing auth path, unrestricted)
+  const apiKeyData = await getClientFromApiKey(req);
+  if (!apiKeyData) {
+    // No API key — require admin or tenant JWT
+    const caller = await dualAuth(req, res);
+    if (!caller) return;
+
+    if (caller.kind === "tenant") {
+      // Tenant: verify the requested MAC is bound to their client
+      const { mac } = req.query || {};
+      if (!mac) return error(res, "缺少 MAC 地址", 400, req);
+
+      const { data: bound } = await supabase
+        .from("client_tags")
+        .select("mac")
+        .eq("client_id", caller.scopeClientId)
+        .eq("mac", mac.toUpperCase())
+        .single();
+
+      if (!bound) return error(res, "未授權：此 MAC 不屬於您的帳號", 403, req);
+      // MAC is verified — fall through to the existing query logic below
+    }
+    // Admin: fall through without any MAC restriction
+  }
 
   const { mac, hours, limit: limitStr } = req.query || {};
   if (!mac) return error(res, "缺少 MAC 地址", 400, req);

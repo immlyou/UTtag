@@ -1,15 +1,18 @@
 const { supabase } = require("../../lib/supabase");
 const { getAdminFromReq, getClientFromApiKey, cors, json, error } = require("../../lib/auth");
+const { dualAuth } = require("../../lib/auth-middleware");
 
 module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") { cors(res, req); return res.status(200).end(); }
 
-  const admin = getAdminFromReq(req);
-  const apiKeyData = !admin ? await getClientFromApiKey(req) : null;
-  if (!admin && !apiKeyData) return error(res, "Unauthorized", 401, req);
-
-  // GET - Get or create current user
+  // GET - accepts admin JWT, tenant JWT, or API key (chat_users has no client_id, no extra scoping)
   if (req.method === "GET") {
+    const apiKeyData = await getClientFromApiKey(req);
+    if (!apiKeyData) {
+      const caller = await dualAuth(req, res);
+      if (!caller) return;
+    }
+
     const { user_id } = req.query || {};
 
     if (user_id) {
@@ -32,6 +35,11 @@ module.exports = async function handler(req, res) {
     if (dbErr) return error(res, dbErr.message, 400, req);
     return json(res, data, 200, req);
   }
+
+  // POST / PUT — admin or API key only (mutations stay protected)
+  const admin = getAdminFromReq(req);
+  const apiKeyData = !admin ? await getClientFromApiKey(req) : null;
+  if (!admin && !apiKeyData) return error(res, "Unauthorized", 401, req);
 
   // POST - Create or update user
   if (req.method === "POST") {

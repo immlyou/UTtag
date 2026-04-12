@@ -1,17 +1,32 @@
 const { supabase } = require("../../lib/supabase");
 const { getAdminFromReq, cors, json, error } = require("../../lib/auth");
+const { dualAuth } = require("../../lib/auth-middleware");
 
 module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") { cors(res, req); return res.status(200).end(); }
 
-  // GET — 列出綁定（需要 admin 認證）
+  // GET — 列出綁定
   if (req.method === "GET") {
-    const admin = getAdminFromReq(req);
-    if (!admin) return error(res, "未授權", 401, req);
+    const caller = await dualAuth(req, res);
+    if (!caller) return;
 
-    const { mac } = req.query || {};
     let query = supabase.from("sensor_bindings").select("*").order("created_at", { ascending: false });
-    if (mac) query = query.eq("mac", mac.toUpperCase());
+
+    if (caller.kind === "tenant") {
+      // Tenant: scope to MACs bound to their client_id
+      const { data: boundTags } = await supabase
+        .from("client_tags")
+        .select("mac")
+        .eq("client_id", caller.scopeClientId);
+      const boundMacs = (boundTags || []).map(t => t.mac);
+      if (boundMacs.length === 0) return json(res, [], 200, req);
+      query = query.in("mac", boundMacs);
+    } else {
+      // Admin: honour optional mac filter
+      const { mac } = req.query || {};
+      if (mac) query = query.eq("mac", mac.toUpperCase());
+    }
+
     const { data, error: dbErr } = await query;
     if (dbErr) return error(res, dbErr.message, 400, req);
     return json(res, data, 200, req);

@@ -1,14 +1,26 @@
 const { supabase } = require("../../lib/supabase");
 const { getAdminFromReq, cors, json, error } = require("../../lib/auth");
+const { dualAuth } = require("../../lib/auth-middleware");
 
 module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") { cors(res, req); return res.status(200).end(); }
 
-  // GET — 列出客戶綁定的 TAGs（公開，Dashboard 需要）
+  // GET — 列出客戶綁定的 TAGs
   if (req.method === "GET") {
-    const { client_id } = req.query || {};
+    const caller = await dualAuth(req, res);
+    if (!caller) return;
+
     let query = supabase.from("client_tags").select("id, mac, label, client_id, created_at").order("created_at", { ascending: false });
-    if (client_id) query = query.eq("client_id", client_id);
+
+    if (caller.kind === "tenant") {
+      // Tenant: scope to their own client_id, ignore query param
+      query = query.eq("client_id", caller.scopeClientId);
+    } else {
+      // Admin: honour optional client_id filter
+      const { client_id } = req.query || {};
+      if (client_id) query = query.eq("client_id", client_id);
+    }
+
     const { data, error: dbErr } = await query;
     if (dbErr) return error(res, dbErr.message, 400, req);
     return json(res, data, 200, req);

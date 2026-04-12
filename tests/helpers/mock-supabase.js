@@ -56,6 +56,10 @@ function createMockSupabase(tables = {}) {
         rows = rows.filter(r => vals.includes(r[col]));
         return q;
       },
+      gt(col, val) {
+        rows = rows.filter(r => r[col] > val);
+        return q;
+      },
       gte(col, val) {
         rows = rows.filter(r => r[col] >= val);
         return q;
