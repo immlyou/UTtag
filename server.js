@@ -9,7 +9,7 @@ const PORT = 3030;
 
 // 只允許存取前端需要的靜態檔案，避免暴露敏感檔案
 const ALLOWED_STATIC = [
-  "index.html", "admin.html", "tenant-login.html", "app.js", "style.css",
+  "index.html", "admin.html", "tenant-login.html", "tenant.html", "app.js", "style.css",
   "sw.js", "manifest.json",
 ];
 // Directory prefixes that are safe to expose (served read-only by express.static).
