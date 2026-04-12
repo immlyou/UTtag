@@ -366,6 +366,84 @@ router.get("/:id/keys", async (req, res) => {
 });
 
 /**
+ * GET /api/admin/clients/:id/settings
+ * Super-admin reads a tenant's settings (branding + notifications).
+ */
+router.get("/:id/settings", async (req, res) => {
+  const admin = await requireSuperAdmin(req, res);
+  if (!admin) return;
+  const { id } = req.params;
+  try {
+    const { data, error: dbErr } = await supabase
+      .from("tenant_settings")
+      .select("*")
+      .eq("client_id", id)
+      .maybeSingle();
+    if (dbErr) return error(res, dbErr.message, 400, req);
+    json(res, data || { client_id: id }, 200, req);
+  } catch (err) {
+    error(res, err.message, 500, req);
+  }
+});
+
+/**
+ * PUT /api/admin/clients/:id/settings
+ * Super-admin edits any tenant's branding. Mirrors /api/tenant/settings PUT.
+ */
+router.put("/:id/settings", async (req, res) => {
+  const admin = await requireSuperAdmin(req, res);
+  if (!admin) return;
+  const { id } = req.params;
+
+  const EDITABLE = [
+    "logo_url", "primary_color", "company_name_display",
+    "alert_email_enabled", "quota_warning_threshold", "daily_digest_enabled",
+  ];
+  const filtered = Object.fromEntries(
+    Object.entries(req.body || {}).filter(([k]) => EDITABLE.includes(k))
+  );
+  if (Object.keys(filtered).length === 0) {
+    return error(res, "No editable fields in payload", 400, req);
+  }
+  if (filtered.primary_color && !/^#[0-9a-fA-F]{6}$/.test(filtered.primary_color)) {
+    return error(res, "primary_color must be a #RRGGBB hex string", 400, req);
+  }
+
+  try {
+    const { data: current } = await supabase
+      .from("tenant_settings").select("*").eq("client_id", id).maybeSingle();
+
+    const { data: updated, error: dbErr } = await supabase
+      .from("tenant_settings")
+      .upsert(
+        { client_id: id, ...filtered, updated_at: new Date().toISOString() },
+        { onConflict: "client_id" }
+      )
+      .select()
+      .single();
+    if (dbErr) return error(res, dbErr.message, 400, req);
+
+    await logAudit({
+      actor_type: "admin",
+      actor_id: admin.id,
+      actor_email: admin.username,
+      client_id: id,
+      target_type: "tenant_settings",
+      target_id: id,
+      action: "update",
+      resource: "tenant_settings",
+      old_values: current || {},
+      new_values: updated,
+      ip_address: getClientIP(req),
+    });
+
+    json(res, updated, 200, req);
+  } catch (err) {
+    error(res, err.message, 500, req);
+  }
+});
+
+/**
  * GET /api/admin/clients/:id/usage
  * Get usage statistics for a specific client
  */

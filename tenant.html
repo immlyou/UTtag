@@ -233,6 +233,23 @@
         <div id="profile-container"><div class="loading">載入中…</div></div>
       </div>
 
+      <div id="branding-card" class="card profile-card hidden" style="margin-bottom:16px">
+        <h2><span>組織 Branding</span><span class="ago">僅 admin 可編輯</span></h2>
+        <div style="padding:16px">
+          <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">公司顯示名稱</label>
+          <input id="br-name" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:10px;font:inherit" />
+          <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">主色 (HEX #RRGGBB)</label>
+          <div style="display:flex;gap:8px;margin-bottom:10px">
+            <input id="br-color" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font:inherit" placeholder="#0066cc" />
+            <input id="br-color-picker" type="color" style="width:50px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer" />
+          </div>
+          <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Logo URL</label>
+          <input id="br-logo" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:12px;font:inherit" placeholder="https://..." />
+          <div id="br-msg" style="font-size:12px;margin-bottom:8px"></div>
+          <button id="btn-save-branding" style="background:var(--uttag-primary);color:#fff;border:none;padding:8px 16px;border-radius:5px;cursor:pointer;font:inherit">儲存</button>
+        </div>
+      </div>
+
       <div class="card profile-card">
         <h2><span>修改密碼</span></h2>
         <div style="padding:16px">
@@ -476,10 +493,16 @@
 
     function paintRoleUI(me) {
       currentRole = me?.user?.role;
-      // Only admin sees the "+ 新增成員" button.
+      // Only admin sees the "+ 新增成員" button and the branding editor card.
       const newBtn = document.getElementById("btn-new-member");
-      if (currentRole === "admin") newBtn.classList.remove("hidden");
-      else newBtn.classList.add("hidden");
+      const brandCard = document.getElementById("branding-card");
+      if (currentRole === "admin") {
+        newBtn.classList.remove("hidden");
+        brandCard.classList.remove("hidden");
+      } else {
+        newBtn.classList.add("hidden");
+        brandCard.classList.add("hidden");
+      }
 
       // Impersonation banner.
       const imp = me?.impersonated_by;
@@ -556,6 +579,69 @@
       });
     }
 
+    // ---------- Branding ----------
+    async function loadBranding() {
+      try {
+        const s = await fetchJSON("/api/tenant/settings");
+        // Apply primary color override if set.
+        if (s.primary_color) {
+          document.documentElement.style.setProperty("--uttag-primary", s.primary_color);
+        }
+        // Override company name in subtitle if configured.
+        if (s.company_name_display) {
+          const sub = document.getElementById("subtitle");
+          const parts = (sub.textContent || "").split("　·　");
+          parts[0] = s.company_name_display;
+          sub.textContent = parts.join("　·　");
+        }
+        // Populate the admin-only editor.
+        if (currentRole === "admin") {
+          document.getElementById("br-name").value   = s.company_name_display || "";
+          document.getElementById("br-color").value  = s.primary_color || "";
+          document.getElementById("br-color-picker").value = s.primary_color || "#0066cc";
+          document.getElementById("br-logo").value   = s.logo_url || "";
+        }
+      } catch (err) {
+        console.warn("[branding] load failed:", err.message);
+      }
+    }
+
+    function bindBranding() {
+      document.getElementById("br-color-picker").addEventListener("input", (e) => {
+        document.getElementById("br-color").value = e.target.value;
+      });
+      document.getElementById("btn-save-branding").addEventListener("click", async () => {
+        const msg = document.getElementById("br-msg");
+        const body = {
+          company_name_display: document.getElementById("br-name").value.trim() || null,
+          primary_color:        document.getElementById("br-color").value.trim() || null,
+          logo_url:             document.getElementById("br-logo").value.trim() || null,
+        };
+        // Drop null keys so server-side validation only sees what we're updating.
+        Object.keys(body).forEach(k => { if (body[k] == null || body[k] === "") delete body[k]; });
+        msg.style.color = "#b91c1c";
+        if (body.primary_color && !/^#[0-9a-fA-F]{6}$/.test(body.primary_color)) {
+          msg.textContent = "主色必須是 #RRGGBB 格式"; return;
+        }
+        try {
+          const r = await fetch("/api/tenant/settings", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", ...TENANT.getAuthHeader() },
+            body: JSON.stringify(body),
+          });
+          const resp = await r.json();
+          if (!r.ok) throw new Error(resp.error || "HTTP " + r.status);
+          msg.style.color = "#166534";
+          msg.textContent = "Branding 已更新（重整生效）";
+          if (body.primary_color) {
+            document.documentElement.style.setProperty("--uttag-primary", body.primary_color);
+          }
+        } catch (e) {
+          msg.textContent = "儲存失敗：" + e.message;
+        }
+      });
+    }
+
     // ---------- End impersonation ----------
     document.getElementById("btn-end-impersonation").addEventListener("click", () => {
       localStorage.removeItem("tenant_token");
@@ -580,6 +666,7 @@
           "　·　角色 " + (me?.user?.role || "");
 
         paintRoleUI(me);
+        loadBranding();
         renderDevices(devices || []);
         renderMap(devices || []);
 
@@ -594,6 +681,7 @@
     document.addEventListener("DOMContentLoaded", () => {
       bindMemberModal();
       bindChangePassword();
+      bindBranding();
       bootstrap();
     });
   </script>
