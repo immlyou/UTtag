@@ -155,7 +155,43 @@ The RLS policies from `phase5b-rls.sql` + `phase5c-tenant-alerts.sql` are in pla
 
 ---
 
-## 11. Other deferred work
+## 11. Backend deployment (Render + Vercel split)
+
+Vercel alone does **not** run this backend — it's an Express server with a long-running node-cron scheduler. We split: Vercel serves static frontend + proxies `/api/*` to a Render web service that runs the Express process.
+
+### Files in this repo that make that work
+
+| File | Role |
+|---|---|
+| `Dockerfile` | Node 20 Alpine, `npm ci --omit=dev`, runs `node server.js` |
+| `.dockerignore` | Keeps the image small (no node_modules, .git, tests, docs, mobile/) |
+| `render.yaml` | Render Blueprint — one-click import defines the service + env vars |
+| `vercel.json` | Adds `/api/:path* → https://uttag-api.onrender.com/api/:path*` rewrite so the browser sees same-origin (no CORS) |
+| `server.js` | Respects `process.env.PORT` (Render injects this) |
+
+### First deploy walkthrough
+
+1. **On Render** → New → Blueprint → select `immlyou/UTtag` → point at `main`. Render reads `render.yaml` and provisions `uttag-api`.
+2. **Fill the secret env vars** that `render.yaml` marked `sync: false` (Render prompts): `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `JWT_SECRET`, plus optionally `SUPABASE_ANON_KEY` / `RESEND_API_KEY` / `EMAIL_FROM`.
+3. Wait ~3 min for the first build. Hit `https://uttag-api.onrender.com/` — you should see the landing HTML. Hit `https://uttag-api.onrender.com/api/auth/login` with a POST — you should see `405 Method not allowed` (that's the handler replying, which proves Express is running).
+4. **If the Render URL differs** from `https://uttag-api.onrender.com`, edit `vercel.json` line ~9 and push — Vercel redeploys the static site instantly.
+5. **On Vercel** → next deploy picks up the new rewrite automatically. Test: `curl -X POST https://utfind-dashboard.vercel.app/api/tenant/auth/login -H 'Content-Type: application/json' -d '{"email":"admin@coldchain.demo","password":"demopass"}'`. You should get a token back.
+
+### Render caveats
+
+- **Free tier sleeps** after 15 min idle — first request after sleep takes ~30s to cold-boot. Use `starter` ($7/mo) for demo.
+- **node-cron** runs in the same process. On `starter` you get 1 instance; `claim_due_schedule()` from phase5d makes it safe to scale up.
+- **File storage** is ephemeral — don't write anything to disk you need to keep. Reports are streamed via Resend, not saved.
+
+### Rolling back
+
+- Vercel: `vercel rollback` on the dashboard — it's all static.
+- Render: each deploy is a versioned Docker image, click "Rollback" in the dashboard.
+- DB migrations: Supabase does not track migration order. Keep them idempotent (we do) and always test in a staging Supabase project first.
+
+---
+
+## 12. Other deferred work
 
 | Item | Notes |
 |---|---|

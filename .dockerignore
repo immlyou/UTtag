@@ -1,0 +1,15 @@
+# Keep the image small.
+node_modules
+.git
+.github
+.vercel
+.claude
+.omc
+tests
+docs
+mobile
+*.md
+.env
+.env.local
+.env.*.local
+VERSION_HISTORY.md

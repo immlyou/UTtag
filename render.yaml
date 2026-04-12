@@ -1,0 +1,56 @@
+# Render Blueprint for UTtag backend.
+# Usage:
+#   1. Push to GitHub (already done — origin/main)
+#   2. On https://dashboard.render.com → New → Blueprint → pick this repo
+#   3. Fill in secret env vars listed below (Render will not commit them)
+#   4. First deploy: ~3 min. Auto-deploys on every push to main thereafter.
+#
+# Scheduler note: UTtag uses node-cron in-process. Render Web Services
+# keep the process alive, so the cron works out of the box. On multi-
+# instance tiers, phase5d's claim_due_schedule() handles the race.
+
+services:
+  - type: web
+    name: uttag-api
+    runtime: docker
+    plan: starter                # $7/mo, 512MB RAM — enough for demo.
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    autoDeploy: true
+    branch: main
+    region: singapore            # closest to Taiwan / Supabase AP.
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "10000"           # Render's convention.
+      # --- Secrets — set manually in the Render dashboard ---
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      # Only set these once you are activating S5 full RLS (issue #6):
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      # Email + push are optional but recommended:
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      # CORS: production REQUIRES this to be set (see lib/auth.js S3 fix).
+      # Point it at the Vercel frontend origin.
+      - key: ALLOWED_ORIGINS
+        value: https://utfind-dashboard.vercel.app
+      # Public URL used in invite / reset email links:
+      - key: APP_URL
+        value: https://utfind-dashboard.vercel.app
+      # Optional — turn off if you don't want scheduler / push on this instance:
+      - key: ENABLE_SCHEDULER
+        value: "true"
+      - key: ENABLE_PUSH
+        value: "false"
+      # Optional — 15 min default for impersonation tokens.
+      - key: IMPERSONATE_TTL
+        value: "900"
