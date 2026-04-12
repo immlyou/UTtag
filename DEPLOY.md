@@ -123,10 +123,41 @@ Set `JWT_SECRET` before running. The harness stubs Supabase for most suites.
 
 ---
 
-## 10. Known deferred work
+## 10. S5 RLS enforcement
+
+**Status: infrastructure landed, cutover deferred** — see issue #6.
+
+The RLS policies from `phase5b-rls.sql` + `phase5c-tenant-alerts.sql` are in place on the DB. But the Node backend connects with `SUPABASE_SERVICE_KEY`, which bypasses RLS. `lib/supabase.js` now exposes `getUserScopedClient(req)` that forwards the caller's JWT to PostgREST. The helper currently **falls back** to the service client if either prerequisite below is missing — so today's behaviour is unchanged.
+
+### Activating full RLS
+
+1. **Align JWT signing with Supabase**
+   Either: set `JWT_SECRET` equal to the Supabase project's JWT secret (Supabase dashboard → Settings → API → JWT Secret). Or: keep `JWT_SECRET` for admin tokens and introduce `TENANT_JWT_SECRET = <supabase-jwt-secret>` to sign tenant tokens only.
+
+2. **Set `SUPABASE_ANON_KEY`** in the environment.
+
+3. **Migrate handlers** one at a time from the legacy `const { supabase } = require("./lib/supabase")` to:
+   ```js
+   const { getUserScopedClient } = require("../../lib/supabase");
+   // inside the handler:
+   const db = getUserScopedClient(req);
+   await db.from("...").select(...);
+   ```
+   Start with read paths (`api/tenant/devices.js` is already POC-migrated). Writes that legitimately need RLS bypass (ingestion, scheduler, impersonation) stay on `getAdminClient()`.
+
+4. **Verify** with `lib/supabase.js::isUserScopingActive()` returning `true` + integration tests that prove a tenant JWT can't see another tenant's rows.
+
+### Known gotchas
+
+- `current_setting('request.jwt.claims', true)` returns empty if PostgREST rejects the JWT signature — handlers silently get 0 rows, not an error. Always run the preflight after enabling.
+- The scheduler (`lib/scheduler.js`) and sensor ingest (`api/sensors/push.js`) must stay on `getAdminClient()`.
+- Admin token needs role=`superadmin` or `admin` — these are accepted by the RLS helper `auth_is_superadmin()` defined in phase5b.
+
+---
+
+## 11. Other deferred work
 
 | Item | Notes |
 |---|---|
-| S5 full RLS | Backend still uses `SUPABASE_SERVICE_KEY` which bypasses RLS. Policies are in place as safety net. Full enforcement requires switching to per-request user-scoped Supabase clients — separate sprint. |
-| Mobile E2E | No Maestro/Detox harness yet. Backend endpoints are ready under `/api/mobile/*`. |
-| Scheduler token bootstrap | `IMPERSONATE_TTL=900` is the demo default (15 min). Set higher only for demo boxes; never in prod. |
+| Mobile E2E | Issue #7 — needs Maestro + Android emulator in CI. |
+| Scheduler token TTL | `IMPERSONATE_TTL=900` is the demo default (15 min). Set higher only for demo boxes; never in prod. |
