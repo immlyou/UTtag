@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin 代入 / Impersonate</title>
+  <style>
+    :root { --primary:#0066cc; --border:#e5e7eb; --muted:#6b7280; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 40px 20px;
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      background: #f6f7f9; color: #111827;
+    }
+    main {
+      max-width: 720px; margin: 0 auto;
+      background: #fff; border: 1px solid var(--border);
+      border-radius: 12px; padding: 32px;
+    }
+    h1 { margin: 0 0 8px; font-size: 20px; }
+    p.sub { margin: 0 0 24px; color: var(--muted); }
+    .step { display: none; }
+    .step.active { display: block; }
+    .step + .step { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 24px; }
+    label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    input {
+      width: 100%; padding: 8px 10px; font: inherit;
+      border: 1px solid var(--border); border-radius: 6px;
+      margin-bottom: 12px;
+    }
+    button {
+      padding: 8px 16px; font: inherit; font-weight: 500;
+      background: var(--primary); color: #fff;
+      border: none; border-radius: 6px; cursor: pointer;
+    }
+    button.secondary { background: #fff; color: var(--primary); border: 1px solid var(--primary); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .list {
+      border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin: 12px 0;
+    }
+    .list .row {
+      padding: 10px 14px; border-top: 1px solid var(--border); cursor: pointer;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .list .row:first-child { border-top: 0; }
+    .list .row:hover { background: #f9fafb; }
+    .list .row.picked { background: #e0f2fe; }
+    .badge { background: #e5e7eb; color: #374151; padding: 2px 8px; border-radius: 999px; font-size: 11px; }
+    .err { color: #b91c1c; padding: 10px; background: #fee2e2; border-radius: 6px; margin: 8px 0; }
+    .info { color: #1e3a8a; padding: 10px; background: #dbeafe; border-radius: 6px; margin: 8px 0; font-size: 13px; }
+    code { background: #f3f4f6; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Admin 代入 Tenant 視角</h1>
+    <p class="sub">作為 superadmin 直接以任一 tenant 使用者身份打開 <code>/tenant.html</code>。<br/>發出的 token 15 分鐘後自動過期；整個動作會寫入 <code>audit_logs</code>。</p>
+
+    <!-- Step 1: admin login (skipped if already logged in) -->
+    <section id="step-login" class="step">
+      <h3>1. 管理員登入</h3>
+      <label>Username</label>
+      <input id="ad-user" autocomplete="username" />
+      <label>Password</label>
+      <input id="ad-pass" type="password" autocomplete="current-password" />
+      <div id="login-err"></div>
+      <button id="btn-login">登入</button>
+    </section>
+
+    <!-- Step 2: pick client -->
+    <section id="step-client" class="step">
+      <h3>2. 選擇 Tenant</h3>
+      <div id="client-list" class="list"></div>
+      <div id="client-err"></div>
+    </section>
+
+    <!-- Step 3: pick user -->
+    <section id="step-user" class="step">
+      <h3>3. 選擇成員</h3>
+      <div id="user-list" class="list"></div>
+      <div id="user-err"></div>
+      <button class="secondary" id="btn-back-clients">← 換一個 Tenant</button>
+    </section>
+
+    <!-- Step 4: confirm + jump -->
+    <section id="step-go" class="step">
+      <div class="info" id="go-info"></div>
+      <button id="btn-go">開啟 Tenant 視角 →</button>
+      <button class="secondary" id="btn-back-users">← 回上一步</button>
+      <div id="go-err"></div>
+    </section>
+  </main>
+
+  <script>
+    var LS_ADMIN = "utfind_admin_token";
+
+    var state = { adminToken: null, client: null, tenantUser: null, tenantToken: null };
+
+    function $(id) { return document.getElementById(id); }
+    function showErr(el, msg) { el.innerHTML = '<div class="err">' + msg + "</div>"; }
+    function clearErr(el) { el.innerHTML = ""; }
+    function show(step) {
+      ["login","client","user","go"].forEach(function (s) {
+        $("step-" + s).classList.toggle("active", s === step);
+      });
+    }
+
+    // Bootstrap: if admin token already in localStorage, skip step 1.
+    state.adminToken = localStorage.getItem(LS_ADMIN);
+    if (state.adminToken) {
+      loadClients();
+    } else {
+      show("login");
+    }
+
+    $("btn-login").addEventListener("click", async function () {
+      clearErr($("login-err"));
+      var username = $("ad-user").value.trim();
+      var password = $("ad-pass").value;
+      if (!username || !password) { showErr($("login-err"), "請填入帳號與密碼"); return; }
+      try {
+        var r = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: username, password: password }),
+        });
+        var body = await r.json();
+        if (!r.ok) throw new Error(body.error || "HTTP " + r.status);
+        state.adminToken = body.token;
+        localStorage.setItem(LS_ADMIN, body.token);
+        loadClients();
+      } catch (e) {
+        showErr($("login-err"), "登入失敗：" + e.message);
+      }
+    });
+
+    async function apiAdmin(url) {
+      var r = await fetch(url, { headers: { Authorization: "Bearer " + state.adminToken } });
+      if (r.status === 401 || r.status === 403) {
+        localStorage.removeItem(LS_ADMIN); state.adminToken = null;
+        show("login"); throw new Error("Session expired");
+      }
+      if (!r.ok) throw new Error("HTTP " + r.status + " " + url);
+      return r.json();
+    }
+
+    async function loadClients() {
+      show("client");
+      clearErr($("client-err"));
+      $("client-list").innerHTML = '<div class="row">載入中…</div>';
+      try {
+        var body = await apiAdmin("/api/admin/clients?per_page=100");
+        var clients = body.clients || [];
+        if (!clients.length) { $("client-list").innerHTML = '<div class="row">沒有 Tenant</div>'; return; }
+        $("client-list").innerHTML = clients.map(function (c) {
+          return '<div class="row" data-id="' + c.id + '" data-name="' + esc(c.name) + '">' +
+            "<span><strong>" + esc(c.name) + "</strong> <span class=\"badge\">" + esc(c.industry || "generic") + "</span></span>" +
+            '<span class="badge">' + esc(c.tier || "") + "</span></div>";
+        }).join("");
+        $("client-list").querySelectorAll(".row").forEach(function (row) {
+          row.addEventListener("click", function () {
+            state.client = { id: row.dataset.id, name: row.dataset.name };
+            loadUsers();
+          });
+        });
+      } catch (e) {
+        showErr($("client-err"), e.message);
+      }
+    }
+
+    async function loadUsers() {
+      show("user");
+      clearErr($("user-err"));
+      $("user-list").innerHTML = '<div class="row">載入中…</div>';
+      try {
+        var users = await apiAdmin("/api/admin/clients/" + state.client.id + "/users");
+        if (!users.length) { $("user-list").innerHTML = '<div class="row">此 Tenant 無成員</div>'; return; }
+        $("user-list").innerHTML = users.map(function (u) {
+          return '<div class="row" data-id="' + u.id + '" data-email="' + esc(u.email) + '" data-name="' + esc(u.name) + '">' +
+            "<span><strong>" + esc(u.email) + "</strong> — " + esc(u.name) + "</span>" +
+            '<span class="badge">' + esc(u.role) + "</span></div>";
+        }).join("");
+        $("user-list").querySelectorAll(".row").forEach(function (row) {
+          row.addEventListener("click", function () {
+            state.tenantUser = { id: row.dataset.id, email: row.dataset.email, name: row.dataset.name };
+            prepareGo();
+          });
+        });
+      } catch (e) {
+        showErr($("user-err"), e.message);
+      }
+    }
+
+    async function prepareGo() {
+      show("go");
+      clearErr($("go-err"));
+      $("go-info").innerHTML = "將以 <strong>" + esc(state.tenantUser.email) + "</strong>（" + esc(state.client.name) + "）身份開啟 tenant.html。<br/>你的 admin token 保持不變，tenant token 僅 15 分鐘有效。";
+      try {
+        var r = await fetch("/api/admin/impersonate", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + state.adminToken,
+          },
+          body: JSON.stringify({ tenant_user_id: state.tenantUser.id }),
+        });
+        var body = await r.json();
+        if (!r.ok) throw new Error(body.error || "HTTP " + r.status);
+        state.tenantToken = body.token;
+      } catch (e) {
+        showErr($("go-err"), e.message);
+      }
+    }
+
+    $("btn-go").addEventListener("click", function () {
+      if (!state.tenantToken) return;
+      localStorage.setItem("tenant_token", state.tenantToken);
+      localStorage.setItem("tenant_user", JSON.stringify(state.tenantUser));
+      // Clear any cached industry context so tenant.html fetches fresh.
+      localStorage.removeItem("uttag_industry_ctx");
+      window.location.href = "/tenant.html";
+    });
+
+    $("btn-back-clients").addEventListener("click", loadClients);
+    $("btn-back-users").addEventListener("click", loadUsers);
+
+    function esc(s) {
+      if (s == null) return "";
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" })[c];
+      });
+    }
+  </script>
+</body>
+</html>

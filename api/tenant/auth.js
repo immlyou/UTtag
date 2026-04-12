@@ -168,7 +168,9 @@ router.get("/me", async (req, res) => {
       user: fullUser,
       permissions: permissionCodes,
       industry,
-      industry_defaults: industryDefaults || null
+      industry_defaults: industryDefaults || null,
+      // null in a normal login, populated when a superadmin impersonated this user.
+      impersonated_by: user.impersonated_by || null
     }, 200, req);
   } catch (err) {
     error(res, err.message, 500, req);
