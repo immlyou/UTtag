@@ -48,5 +48,48 @@ module.exports = async function handler(req, res) {
     }
   });
 
+  // 若有違規，寫入 tenant_alerts（降級：失敗不阻斷回應）
+  if (alerts.length > 0) {
+    try {
+      const macUpper = mac.toUpperCase();
+
+      // 從 client_tags 反查 client_id（取第一筆）
+      const { data: clientTagRow } = await supabase
+        .from("client_tags")
+        .select("client_id")
+        .eq("mac", macUpper)
+        .limit(1)
+        .single();
+
+      if (clientTagRow) {
+        const occurredAt = new Date().toISOString();
+        const alertRows = alerts.map(a => {
+          const metric = a.type.startsWith("temp") ? "temperature" : "humidity";
+          const severity = metric === "temperature" ? "warn" : "info";
+          return {
+            client_id: clientTagRow.client_id,
+            mac: macUpper,
+            kind: a.type,
+            metric,
+            value: a.value,
+            threshold: a.threshold,
+            severity,
+            occurred_at: occurredAt,
+          };
+        });
+
+        const { error: alertErr } = await supabase
+          .from("tenant_alerts")
+          .upsert(alertRows, { onConflict: "mac,kind,occurred_bucket", ignoreDuplicates: true });
+
+        if (alertErr) {
+          console.warn("[push] tenant_alerts upsert failed:", alertErr.message);
+        }
+      }
+    } catch (e) {
+      console.warn("[push] tenant_alerts write error:", e.message);
+    }
+  }
+
   json(res, { recorded: true, id: data.id, alerts }, 201, req);
 };

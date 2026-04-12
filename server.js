@@ -68,6 +68,7 @@ app.use("/api/tenant/devices", require("./api/tenant/devices"));
 app.use("/api/tenant/keys", require("./api/tenant/keys"));
 app.use("/api/tenant/usage", require("./api/tenant/usage"));
 app.use("/api/tenant/alerts", require("./api/tenant/alerts"));
+app.use("/api/tenant/settings", require("./api/tenant/settings"));
 
 // ============================================
 // Phase 4: Mobile App Routes
