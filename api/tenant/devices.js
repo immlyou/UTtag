@@ -9,6 +9,7 @@ const router = express.Router();
 const { supabase } = require("../../lib/supabase");
 const { json, error } = require("../../lib/auth");
 const { requireTenantAuth, hasPermission, logAudit, getClientIP } = require("../../lib/auth-middleware");
+const { filterFieldsAll } = require("../../lib/field-visibility");
 
 /**
  * GET /api/tenant/devices
@@ -18,9 +19,9 @@ router.get("/", async (req, res) => {
   const user = await requireTenantAuth(req, res);
   if (!user) return;
 
-  if (!hasPermission(user, "devices:read")) {
-    return error(res, "Permission denied", 403, req);
-  }
+  // Read is controlled by the field-visibility policy (see lib/field-visibility.js):
+  // caller sees different columns based on role. Mutations (POST/PUT/DELETE) below
+  // continue to use hasPermission (devices:bind / devices:update / devices:unbind).
 
   try {
     // Get devices
@@ -57,10 +58,10 @@ router.get("/", async (req, res) => {
         return { ...d, latest_data: latest || null, status };
       });
 
-      return json(res, enriched, 200, req);
+      return json(res, filterFieldsAll(enriched, "client_tags", user.role), 200, req);
     }
 
-    json(res, devices, 200, req);
+    json(res, filterFieldsAll(devices, "client_tags", user.role), 200, req);
   } catch (err) {
     error(res, err.message, 500, req);
   }

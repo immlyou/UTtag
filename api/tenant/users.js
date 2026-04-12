@@ -11,6 +11,7 @@ const bcrypt = require("bcryptjs");
 const { supabase } = require("../../lib/supabase");
 const { json, error } = require("../../lib/auth");
 const { requireTenantAuth, hasPermission, logAudit, getClientIP } = require("../../lib/auth-middleware");
+const { canRead, filterFields, filterFieldsAll } = require("../../lib/field-visibility");
 
 /**
  * GET /api/tenant/users
@@ -20,19 +21,21 @@ router.get("/", async (req, res) => {
   const user = await requireTenantAuth(req, res);
   if (!user) return;
 
-  if (!hasPermission(user, "users:read")) {
+  // Field-level visibility: policy decides which columns the caller sees.
+  // If the caller's role has no policy entry at all, they cannot read.
+  if (!canRead("tenant_users", user.role)) {
     return error(res, "Permission denied", 403, req);
   }
 
   try {
     const { data: users, error: dbErr } = await supabase
       .from("tenant_users")
-      .select("id, email, name, role, status, last_login_at, created_at")
+      .select("id, email, name, role, status, phone, last_login_at, login_count, created_at")
       .eq("client_id", user.client_id)
       .order("created_at", { ascending: false });
 
     if (dbErr) return error(res, dbErr.message, 400, req);
-    json(res, users, 200, req);
+    json(res, filterFieldsAll(users || [], "tenant_users", user.role), 200, req);
   } catch (err) {
     error(res, err.message, 500, req);
   }
