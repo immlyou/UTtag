@@ -44,15 +44,8 @@ app.use("/api/chat/conversations", require("./api/chat/conversations"));
 app.use("/api/chat/messages", require("./api/chat/messages"));
 app.use("/api/chat/participants", require("./api/chat/participants"));
 
-// Schedule routes - handle all methods and sub-paths
-app.use("/api/schedules", (req, res, next) => {
-  // Extract ID and action from path
-  const pathParts = req.path.split("/").filter(Boolean);
-  req.params = req.params || {};
-  if (pathParts[0]) req.params.id = pathParts[0];
-  if (pathParts[1]) req.params.action = pathParts[1];
-  next();
-}, require("./api/schedules"));
+// Schedule routes
+app.use("/api/schedules", require("./api/schedules"));
 
 // ============================================
 // Phase 3: Multi-tenant Admin Routes
