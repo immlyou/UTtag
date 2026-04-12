@@ -15,6 +15,7 @@
       --ok: #16a34a;
       --warn: #eab308;
       --off: #9ca3af;
+      --danger: #dc2626;
     }
     * { box-sizing: border-box; }
     body {
@@ -33,15 +34,41 @@
       font-weight: 600;
     }
     header.top p { margin: 0; color: var(--muted); }
+
+    nav.tabs {
+      margin: 0 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 4px;
+    }
+    nav.tabs a {
+      padding: 10px 16px;
+      text-decoration: none;
+      color: var(--muted);
+      border-bottom: 2px solid transparent;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    nav.tabs a.active {
+      color: var(--uttag-primary);
+      border-bottom-color: var(--uttag-primary);
+    }
+
     main {
+      padding: 16px 24px 24px;
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .grid-2 {
       display: grid;
       grid-template-columns: minmax(360px, 1fr) 2fr;
       gap: 16px;
-      padding: 0 24px 24px;
     }
     @media (max-width: 900px) {
-      main { grid-template-columns: 1fr; }
+      .grid-2 { grid-template-columns: 1fr; }
     }
+
     .card {
       background: var(--card);
       border: 1px solid var(--border);
@@ -68,57 +95,56 @@
       font-size: 11px;
       font-weight: 500;
     }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-    }
-    th, td {
-      padding: 10px 12px;
-      border-bottom: 1px solid var(--border);
-      text-align: left;
-    }
-    th {
-      background: #fafafa;
-      color: var(--muted);
-      font-weight: 500;
-      font-size: 12px;
-    }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; }
+    th { background: #fafafa; color: var(--muted); font-weight: 500; font-size: 12px; }
     tbody tr:last-child td { border-bottom: none; }
     tbody tr:hover { background: #fafbfc; }
+
     .status {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
+      display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
     }
     .status::before {
-      content: "";
-      display: inline-block;
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      background: var(--off);
+      content: ""; display: inline-block; width: 8px; height: 8px;
+      border-radius: 50%; background: var(--off);
     }
     .status.online::before { background: var(--ok); }
     .status.idle::before   { background: var(--warn); }
-    #map {
-      height: 520px;
-      background: #e5e7eb;
+
+    .severity {
+      display: inline-block; padding: 2px 8px; border-radius: 999px;
+      font-size: 11px; font-weight: 500;
     }
-    .empty, .loading {
-      padding: 32px;
-      text-align: center;
-      color: var(--muted);
-    }
-    .temp {
-      font-variant-numeric: tabular-nums;
-      font-weight: 500;
-    }
-    .ago {
-      font-size: 12px;
-      color: var(--muted);
-    }
+    .severity.warn { background: #fef3c7; color: #92400e; }
+    .severity.info { background: #dbeafe; color: #1e40af; }
+    .severity.critical { background: #fee2e2; color: #991b1b; }
+
+    #map { height: 520px; background: #e5e7eb; }
+    .empty, .loading { padding: 32px; text-align: center; color: var(--muted); }
+    .temp { font-variant-numeric: tabular-nums; font-weight: 500; }
+    .ago  { font-size: 12px; color: var(--muted); }
     .hidden { display: none !important; }
+
+    .profile-card {
+      max-width: 560px;
+    }
+    .profile-row {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .profile-row:last-child { border-bottom: none; }
+    .profile-row .label { color: var(--muted); }
+    .role-pill {
+      display: inline-block; padding: 2px 10px; border-radius: 999px;
+      font-size: 11px; font-weight: 500; background: #e5e7eb; color: #374151;
+    }
+    .role-pill.admin    { background: #dbeafe; color: #1e40af; }
+    .role-pill.operator { background: #dcfce7; color: #166534; }
+    .role-pill.user     { background: #f3f4f6; color: #4b5563; }
   </style>
 </head>
 <body>
@@ -127,23 +153,53 @@
     <p id="subtitle"></p>
   </header>
 
+  <nav class="tabs" id="tabs">
+    <a data-tab="dashboard" class="active">儀表板</a>
+    <a data-tab="alerts">告警</a>
+    <a data-tab="users">成員</a>
+    <a data-tab="profile">帳號</a>
+  </nav>
+
   <main>
-    <section class="card">
-      <h2>
-        <span>我的裝置</span>
-        <span id="device-count" class="count-badge">0</span>
-      </h2>
-      <div id="devices-container">
-        <div class="loading">載入裝置清單…</div>
+    <!-- Dashboard -->
+    <section id="tab-dashboard" class="tab-panel active">
+      <div class="grid-2">
+        <div class="card">
+          <h2><span>我的裝置</span><span id="device-count" class="count-badge">0</span></h2>
+          <div id="devices-container"><div class="loading">載入裝置清單…</div></div>
+        </div>
+        <div class="card">
+          <h2><span>即時位置</span><span id="map-status" class="ago"></span></h2>
+          <div id="map"></div>
+        </div>
       </div>
     </section>
 
-    <section class="card">
-      <h2>
-        <span>即時位置</span>
-        <span id="map-status" class="ago"></span>
-      </h2>
-      <div id="map"></div>
+    <!-- Alerts -->
+    <section id="tab-alerts" class="tab-panel">
+      <div class="card">
+        <h2><span>近 24 小時告警</span><span id="alert-count" class="count-badge">0</span></h2>
+        <div id="alerts-container"><div class="loading">分析中…</div></div>
+      </div>
+    </section>
+
+    <!-- Users -->
+    <section id="tab-users" class="tab-panel">
+      <div class="card">
+        <h2>
+          <span>租戶成員<span id="users-note" class="ago" style="margin-left:12px;"></span></span>
+          <span id="users-count" class="count-badge">0</span>
+        </h2>
+        <div id="users-container"><div class="loading">載入成員清單…</div></div>
+      </div>
+    </section>
+
+    <!-- Profile -->
+    <section id="tab-profile" class="tab-panel">
+      <div class="card profile-card">
+        <h2><span>我的帳號</span></h2>
+        <div id="profile-container"><div class="loading">載入中…</div></div>
+      </div>
     </section>
   </main>
 
@@ -151,81 +207,101 @@
   <script src="/js/industry-gate.js"></script>
   <script src="/js/tenant-session.js"></script>
   <script>
-    // Guard: must be logged in as a tenant user.
     if (!window.TENANT || !TENANT.isLoggedIn()) {
       window.location.replace("/tenant-login.html");
     }
+    if (window.UTTAG && UTTAG.bootIndustry) UTTAG.bootIndustry();
 
-    // Cosmetic: boot industry before we paint so primary color applies.
-    if (window.UTTAG && UTTAG.bootIndustry) {
-      UTTAG.bootIndustry();
-    }
-
-    function timeAgo(iso) {
-      if (!iso) return "—";
-      const diff = Date.now() - new Date(iso).getTime();
-      const s = Math.max(0, Math.round(diff / 1000));
-      if (s < 60)   return s + " 秒前";
-      if (s < 3600) return Math.round(s / 60) + " 分鐘前";
-      if (s < 86400) return Math.round(s / 3600) + " 小時前";
-      return Math.round(s / 86400) + " 天前";
-    }
-
-    function renderDevices(devices) {
-      const container = document.getElementById("devices-container");
-      document.getElementById("device-count").textContent = devices.length;
-
-      if (!devices.length) {
-        container.innerHTML =
-          '<div class="empty">目前沒有綁定任何裝置。<br/>請聯絡管理員以完成裝置綁定。</div>';
-        return;
-      }
-
-      const rows = devices.map(d => {
-        const latest = d.latest_data || {};
-        const temp = latest.temperature != null ? latest.temperature.toFixed(1) + "°C" : "—";
-        const status = d.status || "offline";
-        const statusLabel = { online: "在線", idle: "閒置", offline: "離線" }[status] || status;
-        const label = d.label || d.mac;
-        return "<tr>" +
-          "<td><strong>" + escapeHtml(label) + "</strong><br/><span class=\"ago\">" + escapeHtml(d.mac) + "</span></td>" +
-          "<td><span class=\"status " + status + "\">" + statusLabel + "</span></td>" +
-          "<td class=\"temp\">" + temp + "</td>" +
-          "<td class=\"ago\">" + timeAgo(latest.created_at) + "</td>" +
-        "</tr>";
-      }).join("");
-
-      container.innerHTML =
-        "<table><thead><tr>" +
-          "<th>裝置</th><th>狀態</th><th>溫度</th><th>最後回報</th>" +
-        "</tr></thead><tbody>" + rows + "</tbody></table>";
-    }
-
+    // ---------- helpers ----------
     function escapeHtml(s) {
       if (s == null) return "";
       return String(s).replace(/[&<>"']/g, c => ({
         "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
       })[c]);
     }
+    function timeAgo(iso) {
+      if (!iso) return "—";
+      const diff = Date.now() - new Date(iso).getTime();
+      const s = Math.max(0, Math.round(diff / 1000));
+      if (s < 60)    return s + " 秒前";
+      if (s < 3600)  return Math.round(s / 60) + " 分鐘前";
+      if (s < 86400) return Math.round(s / 3600) + " 小時前";
+      return Math.round(s / 86400) + " 天前";
+    }
+    async function fetchJSON(url) {
+      const res = await fetch(url, { headers: TENANT.getAuthHeader() });
+      if (!res.ok) throw new Error("HTTP " + res.status + " " + url);
+      return res.json();
+    }
 
+    // ---------- tab switching ----------
+    const tabs = document.getElementById("tabs");
+    tabs.addEventListener("click", ev => {
+      const a = ev.target.closest("a[data-tab]");
+      if (!a) return;
+      ev.preventDefault();
+      switchTab(a.dataset.tab);
+    });
+    function switchTab(name) {
+      location.hash = name;
+      document.querySelectorAll("nav.tabs a").forEach(a =>
+        a.classList.toggle("active", a.dataset.tab === name));
+      document.querySelectorAll(".tab-panel").forEach(p =>
+        p.classList.toggle("active", p.id === "tab-" + name));
+      const loaders = { alerts: loadAlerts, users: loadUsers, profile: loadProfile };
+      if (loaders[name]) loaders[name]();
+    }
+    window.addEventListener("hashchange", () => {
+      const h = location.hash.slice(1);
+      if (h && document.getElementById("tab-" + h)) switchTab(h);
+    });
+
+    // ---------- Dashboard ----------
+    function renderDevices(devices) {
+      const container = document.getElementById("devices-container");
+      document.getElementById("device-count").textContent = devices.length;
+
+      if (!devices.length) {
+        container.innerHTML = '<div class="empty">目前沒有綁定裝置。</div>';
+        return;
+      }
+      // Columns adapt to what the API actually returned (field-visibility policy).
+      const hasMac  = devices.some(d => "mac" in d);
+      const hasTemp = devices.some(d => d.latest_data?.temperature != null);
+      const rows = devices.map(d => {
+        const latest = d.latest_data || {};
+        const temp = latest.temperature != null ? latest.temperature.toFixed(1) + "°C" : "—";
+        const status = d.status || "offline";
+        const statusLabel = { online: "在線", idle: "閒置", offline: "離線" }[status] || status;
+        const label = d.label || d.mac || "—";
+        return "<tr>" +
+          "<td><strong>" + escapeHtml(label) + "</strong>" +
+            (hasMac && d.mac ? '<br/><span class="ago">' + escapeHtml(d.mac) + "</span>" : "") +
+          "</td>" +
+          "<td><span class=\"status " + status + "\">" + statusLabel + "</span></td>" +
+          (hasTemp ? '<td class="temp">' + temp + "</td>" : "") +
+          '<td class="ago">' + timeAgo(latest.created_at) + "</td>" +
+        "</tr>";
+      }).join("");
+      container.innerHTML =
+        "<table><thead><tr>" +
+          "<th>裝置</th><th>狀態</th>" + (hasTemp ? "<th>溫度</th>" : "") + "<th>最後回報</th>" +
+        "</tr></thead><tbody>" + rows + "</tbody></table>";
+    }
     function renderMap(devices) {
       const map = L.map("map").setView([24.15, 120.68], 7);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
-        attribution: "&copy; OpenStreetMap"
+        maxZoom: 19, attribution: "&copy; OpenStreetMap"
       }).addTo(map);
-
       const pts = [];
       devices.forEach(d => {
         const lat = d.latitude ?? d.lat ?? null;
         const lng = d.longitude ?? d.lng ?? null;
         if (lat == null || lng == null) return;
         pts.push([lat, lng]);
-        L.marker([lat, lng])
-          .addTo(map)
-          .bindPopup("<strong>" + escapeHtml(d.label || d.mac) + "</strong><br/>" + escapeHtml(d.mac));
+        L.marker([lat, lng]).addTo(map)
+          .bindPopup("<strong>" + escapeHtml(d.label || d.mac || "") + "</strong>");
       });
-
       if (pts.length) {
         map.fitBounds(pts, { padding: [40, 40], maxZoom: 14 });
         document.getElementById("map-status").textContent = pts.length + " 個位置";
@@ -234,12 +310,122 @@
       }
     }
 
-    async function fetchJSON(url) {
-      const res = await fetch(url, { headers: TENANT.getAuthHeader() });
-      if (!res.ok) throw new Error("HTTP " + res.status + " " + url);
-      return res.json();
+    // ---------- Alerts ----------
+    let alertsLoaded = false;
+    async function loadAlerts() {
+      if (alertsLoaded) return;
+      alertsLoaded = true;
+      const container = document.getElementById("alerts-container");
+      try {
+        const body = await fetchJSON("/api/tenant/alerts");
+        const alerts = body.alerts || [];
+        document.getElementById("alert-count").textContent = alerts.length;
+        if (!alerts.length) {
+          container.innerHTML = '<div class="empty">近 24 小時沒有告警，情況良好。</div>';
+          return;
+        }
+        const kindLabel = {
+          temp_low: "低溫", temp_high: "高溫",
+          humidity_low: "低濕", humidity_high: "高濕",
+        };
+        const rows = alerts.map(a => "<tr>" +
+          '<td class="ago">' + escapeHtml(new Date(a.at).toLocaleString("zh-TW")) + "</td>" +
+          "<td><strong>" + escapeHtml(a.label || a.mac) + "</strong></td>" +
+          "<td>" + escapeHtml(kindLabel[a.kind] || a.kind) + "</td>" +
+          '<td class="temp">' + escapeHtml(a.value) + "</td>" +
+          '<td class="temp ago">閾值 ' + escapeHtml(a.threshold) + "</td>" +
+          '<td><span class="severity ' + escapeHtml(a.severity) + '">' + escapeHtml(a.severity) + "</span></td>" +
+        "</tr>").join("");
+        container.innerHTML = "<table><thead><tr>" +
+          "<th>時間</th><th>裝置</th><th>類型</th><th>數值</th><th>閾值</th><th>等級</th>" +
+          "</tr></thead><tbody>" + rows + "</tbody></table>";
+      } catch (err) {
+        container.innerHTML = '<div class="empty">載入失敗：' + escapeHtml(err.message) + "</div>";
+      }
     }
 
+    // ---------- Users ----------
+    let usersLoaded = false;
+    async function loadUsers() {
+      if (usersLoaded) return;
+      usersLoaded = true;
+      const container = document.getElementById("users-container");
+      try {
+        const users = await fetchJSON("/api/tenant/users");
+        document.getElementById("users-count").textContent = users.length;
+
+        // Announce the role-based field visibility so the demo is self-documenting.
+        const me = TENANT.user || {};
+        const roleNote = {
+          admin:    "你是管理員，可看見完整欄位（email / 電話 / 最後登入）",
+          operator: "你是操作員，隱藏電話與最後登入時間",
+          user:     "你是檢視者，僅能看到成員姓名與角色",
+        }[me.role] || "";
+        document.getElementById("users-note").textContent = roleNote;
+
+        if (!users.length) {
+          container.innerHTML = '<div class="empty">沒有成員。</div>';
+          return;
+        }
+
+        const cols = [];
+        if ("name"  in users[0]) cols.push({ key: "name",  label: "姓名" });
+        if ("role"  in users[0]) cols.push({ key: "role",  label: "角色", kind: "role" });
+        if ("email" in users[0]) cols.push({ key: "email", label: "Email" });
+        if ("phone" in users[0]) cols.push({ key: "phone", label: "電話" });
+        if ("status" in users[0]) cols.push({ key: "status", label: "狀態" });
+        if ("last_login_at" in users[0]) cols.push({ key: "last_login_at", label: "最後登入", kind: "ago" });
+        if ("login_count"   in users[0]) cols.push({ key: "login_count",   label: "登入次數" });
+
+        const rows = users.map(u => "<tr>" + cols.map(c => {
+          const v = u[c.key];
+          if (c.kind === "role") {
+            return '<td><span class="role-pill ' + escapeHtml(v) + '">' + escapeHtml(v || "") + "</span></td>";
+          }
+          if (c.kind === "ago") {
+            return '<td class="ago">' + (v ? escapeHtml(new Date(v).toLocaleString("zh-TW")) : "—") + "</td>";
+          }
+          return "<td>" + escapeHtml(v ?? "—") + "</td>";
+        }).join("") + "</tr>").join("");
+
+        container.innerHTML = "<table><thead><tr>" +
+          cols.map(c => "<th>" + c.label + "</th>").join("") +
+          "</tr></thead><tbody>" + rows + "</tbody></table>";
+      } catch (err) {
+        container.innerHTML = '<div class="empty">載入失敗：' + escapeHtml(err.message) + "</div>";
+      }
+    }
+
+    // ---------- Profile ----------
+    let profileLoaded = false;
+    async function loadProfile() {
+      if (profileLoaded) return;
+      profileLoaded = true;
+      const container = document.getElementById("profile-container");
+      try {
+        const me = await fetchJSON("/api/tenant/auth/me");
+        const u = me.user || {};
+        const c = u.clients || {};
+        const rows = [
+          ["姓名", escapeHtml(u.name || "")],
+          ["Email", escapeHtml(u.email || "")],
+          ["角色", '<span class="role-pill ' + escapeHtml(u.role) + '">' + escapeHtml(u.role || "") + "</span>"],
+          ["組織", escapeHtml(c.name || "")],
+          ["產業", escapeHtml(me.industry_defaults?.display_name || me.industry || "")],
+          ["方案", escapeHtml(c.tier || "")],
+          ["最後登入", u.last_login_at ? escapeHtml(new Date(u.last_login_at).toLocaleString("zh-TW")) : "—"],
+          ["登入次數", escapeHtml(u.login_count ?? 0)],
+          ["權限數", escapeHtml((me.permissions || []).length)],
+        ];
+        container.innerHTML = rows.map(r =>
+          '<div class="profile-row"><span class="label">' + r[0] + "</span><span>" + r[1] + "</span></div>"
+        ).join("");
+      } catch (err) {
+        container.innerHTML = '<div class="empty">載入失敗：' + escapeHtml(err.message) + "</div>";
+      }
+    }
+
+    // ---------- Bootstrap ----------
     async function bootstrap() {
       if (!TENANT || !TENANT.isLoggedIn()) return;
       try {
@@ -247,17 +433,19 @@
           fetchJSON("/api/tenant/auth/me"),
           fetchJSON("/api/tenant/devices"),
         ]);
-
         const clientName = me?.user?.clients?.name || me?.user?.client_name || "—";
         const userName = me?.user?.name || me?.user?.email || "";
         document.getElementById("welcome").textContent = "嗨，" + userName;
         document.getElementById("subtitle").textContent = clientName + "　·　" +
-          (me?.industry_defaults?.display_name || me?.industry || "");
+          (me?.industry_defaults?.display_name || me?.industry || "") +
+          "　·　角色 " + (me?.user?.role || "");
 
         renderDevices(devices || []);
         renderMap(devices || []);
+
+        const h = location.hash.slice(1);
+        if (h && document.getElementById("tab-" + h)) switchTab(h);
       } catch (err) {
-        console.error("[tenant.html] bootstrap failed:", err);
         document.getElementById("welcome").textContent = "載入失敗";
         document.getElementById("subtitle").textContent = err.message;
       }

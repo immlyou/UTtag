@@ -54,7 +54,14 @@ VALUES
    'admin',    'active'),
   ('22222222-2222-2222-2222-222222222222',
    'operator@biomed.demo', '生醫操作員', '$2b$10$6Ed9/1nAaid2sPNOrWi6.OEqNzm9E5JBHqhDk9akB6mR5MGZqqivO',
-   'operator', 'active')
+   'operator', 'active'),
+  -- "user" role = viewer (read-only, minimal field visibility)
+  ('11111111-1111-1111-1111-111111111111',
+   'viewer@coldchain.demo', '冷鏈檢視者', '$2b$10$6Ed9/1nAaid2sPNOrWi6.OEqNzm9E5JBHqhDk9akB6mR5MGZqqivO',
+   'user', 'active'),
+  ('22222222-2222-2222-2222-222222222222',
+   'viewer@biomed.demo',    '生醫檢視者', '$2b$10$6Ed9/1nAaid2sPNOrWi6.OEqNzm9E5JBHqhDk9akB6mR5MGZqqivO',
+   'user', 'active')
 ON CONFLICT (client_id, email) DO UPDATE SET
   password_hash = EXCLUDED.password_hash,
   status        = 'active';
@@ -94,8 +101,10 @@ COMMIT;
 --   WHERE c.email LIKE '%@uttag.local' GROUP BY c.id;
 --
 -- Login accounts (all password = "demopass"):
---   admin@coldchain.demo     (cold_chain, admin)
---   operator@coldchain.demo  (cold_chain, operator)
+--   admin@coldchain.demo     (cold_chain, admin    — sees all fields)
+--   operator@coldchain.demo  (cold_chain, operator — limited fields)
+--   viewer@coldchain.demo    (cold_chain, user     — minimal fields, no email/phone)
 --   admin@biomed.demo        (biomedical, admin)
 --   operator@biomed.demo     (biomedical, operator)
+--   viewer@biomed.demo       (biomedical, user)
 -- ============================================
