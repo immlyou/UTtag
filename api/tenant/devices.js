@@ -6,7 +6,11 @@
 
 const express = require("express");
 const router = express.Router();
-const { supabase } = require("../../lib/supabase");
+// S5 POC: read through getUserScopedClient. If SUPABASE_ANON_KEY is set AND
+// our JWT_SECRET matches Supabase's JWT secret, PostgREST will enforce RLS
+// on this request (phase5b policies). Otherwise this handler transparently
+// falls back to the service client and keeps behaving exactly as before.
+const { supabase, getUserScopedClient } = require("../../lib/supabase");
 const { json, error } = require("../../lib/auth");
 const { requireTenantAuth, hasPermission, logAudit, getClientIP } = require("../../lib/auth-middleware");
 const { filterFieldsAll } = require("../../lib/field-visibility");
@@ -24,8 +28,13 @@ router.get("/", async (req, res) => {
   // continue to use hasPermission (devices:bind / devices:update / devices:unbind).
 
   try {
+    // Use the per-request scoped client so RLS kicks in when configured.
+    // The explicit .eq('client_id', ...) below is belt-and-braces: it is
+    // redundant under RLS but still correct without it.
+    const db = getUserScopedClient(req);
+
     // Get devices
-    const { data: devices, error: dbErr } = await supabase
+    const { data: devices, error: dbErr } = await db
       .from("client_tags")
       .select("*")
       .eq("client_id", user.client_id)
@@ -36,7 +45,7 @@ router.get("/", async (req, res) => {
     // Enrich with latest sensor data
     const macs = devices.map(d => d.mac);
     if (macs.length > 0) {
-      const { data: latestData } = await supabase
+      const { data: latestData } = await db
         .from("sensor_data")
         .select("mac, temperature, humidity, created_at")
         .in("mac", macs)
