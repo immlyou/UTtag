@@ -80,5 +80,67 @@
   Object.defineProperty(TENANT, "token", { get: getToken, enumerable: true });
   Object.defineProperty(TENANT, "user",  { get: getUser,  enumerable: true });
 
+  // ------------------------------------------------------------
+  // Tenant banner (only renders when logged in)
+  // ------------------------------------------------------------
+  function renderBanner() {
+    if (!isLoggedIn()) return;
+    // Idempotent: skip if already present.
+    if (document.getElementById("uttag-tenant-banner")) return;
+
+    var user = getUser() || {};
+    var industryLabel = ({
+      generic: "通用 Demo",
+      cold_chain: "冷鏈運輸",
+      biomedical: "生醫 / 疫苗",
+    })[user.industry] || user.industry || "";
+
+    var bar = document.createElement("div");
+    bar.id = "uttag-tenant-banner";
+    bar.setAttribute("style", [
+      "position:fixed","top:0","right:0","z-index:9999",
+      "background:var(--uttag-primary,#0066cc)","color:#fff",
+      "padding:6px 12px","font:12px/1.4 system-ui,sans-serif",
+      "border-bottom-left-radius:6px","display:flex","gap:10px","align-items:center",
+      "box-shadow:0 2px 6px rgba(0,0,0,.15)"
+    ].join(";"));
+
+    bar.innerHTML =
+      '<span style="opacity:.85">' + (user.client_name || "") + "</span>" +
+      '<span style="opacity:.6">|</span>' +
+      "<strong>" + (user.email || user.name || "") + "</strong>" +
+      (industryLabel ? '<span style="background:rgba(255,255,255,.18);padding:2px 6px;border-radius:3px">' + industryLabel + "</span>" : "") +
+      '<button id="uttag-tenant-logout" style="background:transparent;border:1px solid rgba(255,255,255,.5);color:#fff;padding:2px 8px;border-radius:3px;cursor:pointer;font:inherit">登出</button>';
+
+    (document.body || document.documentElement).appendChild(bar);
+    var btn = document.getElementById("uttag-tenant-logout");
+    if (btn) btn.addEventListener("click", logout);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", renderBanner);
+  } else {
+    renderBanner();
+  }
+
+  // ------------------------------------------------------------
+  // Fetch interceptor: auto-logout on 401/403 from tenant-scoped APIs.
+  // Only wraps /api/tenant/* and /api/mobile/* — leaves admin paths alone.
+  // ------------------------------------------------------------
+  var _origFetch = global.fetch ? global.fetch.bind(global) : null;
+  if (_origFetch) {
+    global.fetch = function patchedFetch(input, init) {
+      var url = typeof input === "string" ? input : (input && input.url) || "";
+      var isTenantScoped = /^\/api\/tenant\//.test(url) || /^\/api\/mobile\//.test(url);
+      return _origFetch(input, init).then(function (res) {
+        if (isTenantScoped && isLoggedIn() && (res.status === 401 || res.status === 403)) {
+          console.warn("[tenant-session] " + res.status + " on " + url + " — logging out");
+          logout();
+        }
+        return res;
+      });
+    };
+  }
+
   global.TENANT = TENANT;
 })(window);

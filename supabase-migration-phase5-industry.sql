@@ -62,8 +62,8 @@ INSERT INTO industry_defaults
 VALUES
   ('generic', '通用 Demo',
    -20, 60, 0, 100, 600,
-   '["dashboard","map","tags","alerts","reports","settings"]'::jsonb,
-   '["daily_summary","weekly_summary"]'::jsonb,
+   '["dashboard","map","tags","alerts","reports","settings","transit_monitor","haccp_daily","cold_excursion","batch_tracking","compliance_trail"]'::jsonb,
+   '["daily_summary","weekly_summary","haccp_daily","cold_excursion","transit_report","batch_traceability","compliance_21cfr11"]'::jsonb,
    '#0066cc'),
   ('cold_chain', '冷鏈運輸',
    2, 8, 30, 85, 180,

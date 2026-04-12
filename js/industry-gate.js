@@ -58,8 +58,17 @@
   const STATIC_INDUSTRY_DEFAULTS = {
     generic: {
       display_name: "通用 Demo",
-      features: ["dashboard","map","tags","alerts","reports","settings"],
-      report_templates: ["daily_summary","weekly_summary"],
+      // Demo tenant sees everything — mirrors the pitch deck behavior.
+      features: [
+        "dashboard","map","tags","alerts","reports","settings",
+        "transit_monitor","haccp_daily","cold_excursion",
+        "batch_tracking","compliance_trail"
+      ],
+      report_templates: [
+        "daily_summary","weekly_summary",
+        "haccp_daily","cold_excursion","transit_report",
+        "batch_traceability","compliance_21cfr11"
+      ],
       default_primary_color: "#0066cc",
       temp_min: -20, temp_max: 60, humidity_min: 0, humidity_max: 100,
     },
@@ -169,17 +178,49 @@
     return state.features.includes(name);
   }
 
+  // Returns true if the element should be hidden given the current industry context.
+  // Supports three declarative attributes (any combination):
+  //   data-feature="X"           hide unless whitelist contains X
+  //   data-industry="a,b"        hide unless current industry is in this list
+  //   data-industry-not="a,b"    hide if current industry is in this list
+  function shouldHide(el) {
+    const feat = el.getAttribute("data-feature");
+    if (feat && !hasFeature(feat)) return true;
+
+    const inList = el.getAttribute("data-industry");
+    if (inList) {
+      const allowed = inList.split(",").map(s => s.trim()).filter(Boolean);
+      if (state.industry && !allowed.includes(state.industry)) return true;
+    }
+
+    const notList = el.getAttribute("data-industry-not");
+    if (notList) {
+      const blocked = notList.split(",").map(s => s.trim()).filter(Boolean);
+      if (state.industry && blocked.includes(state.industry)) return true;
+    }
+
+    return false;
+  }
+
   function gateElement(el, feature) {
     if (!el) return;
-    if (!hasFeature(feature)) {
+    // Back-compat shape: explicit feature arg.
+    if (typeof feature === "string" && !hasFeature(feature)) {
+      el.style.display = "none";
+      el.setAttribute("data-gated", "true");
+      return;
+    }
+    // Attribute-driven shape: inspect the element.
+    if (shouldHide(el)) {
       el.style.display = "none";
       el.setAttribute("data-gated", "true");
     }
   }
 
   function applyGatesToDOM(root = document) {
-    const nodes = root.querySelectorAll("[data-feature]");
-    nodes.forEach(n => gateElement(n, n.getAttribute("data-feature")));
+    const selector = "[data-feature],[data-industry],[data-industry-not]";
+    const nodes = root.querySelectorAll(selector);
+    nodes.forEach(n => gateElement(n));
   }
 
   function applyBranding() {
