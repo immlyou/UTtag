@@ -51,6 +51,8 @@ app.use("/api/schedules", require("./api/schedules"));
 // ============================================
 // Phase 3: Multi-tenant Admin Routes
 // ============================================
+// Admin auth (admin.html login)
+app.use("/api/auth", require("./api/auth"));
 // Admin routes (Super Admin only)
 app.use("/api/admin/clients", require("./api/admin/clients"));
 app.use("/api/admin/analytics", require("./api/admin/analytics"));
