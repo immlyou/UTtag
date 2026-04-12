@@ -126,6 +126,9 @@
         });
         var body = await r.json();
         if (!r.ok) throw new Error(body.error || "HTTP " + r.status);
+        if (body.role !== "superadmin") {
+          throw new Error("此帳號不是 superadmin（role=" + body.role + "），無法代入 tenant");
+        }
         state.adminToken = body.token;
         localStorage.setItem(LS_ADMIN, body.token);
         loadClients();

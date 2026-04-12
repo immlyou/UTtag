@@ -127,15 +127,45 @@
   // Fetch interceptor: auto-logout on 401/403 from tenant-scoped APIs.
   // Only wraps /api/tenant/* and /api/mobile/* — leaves admin paths alone.
   // ------------------------------------------------------------
+  // Is this token an impersonation? Decode (no verify) the JWT payload to check.
+  function isImpersonation() {
+    var t = getToken();
+    if (!t) return false;
+    try {
+      var p = JSON.parse(atob(t.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+      return Boolean(p && p.impersonated_by);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function bounceOnExpiry() {
+    // If an admin was impersonating, send them back to the admin tool,
+    // not to the tenant login (they don't know the tenant's password).
+    if (isImpersonation()) {
+      localStorage.removeItem(LS_TOKEN);
+      localStorage.removeItem(LS_USER);
+      localStorage.removeItem(LS_IND);
+      window.location.href = "/admin-impersonate.html";
+    } else {
+      logout();
+    }
+  }
+
   var _origFetch = global.fetch ? global.fetch.bind(global) : null;
   if (_origFetch) {
     global.fetch = function patchedFetch(input, init) {
       var url = typeof input === "string" ? input : (input && input.url) || "";
       var isTenantScoped = /^\/api\/tenant\//.test(url) || /^\/api\/mobile\//.test(url);
+      // Auth-path endpoints (login, me, change-password) intentionally return
+      // 401/403 for bad credentials or expired boot. Don't treat those as
+      // "session died, kick the user out" — the page will surface the error.
+      var isAuthPath = /^\/api\/tenant\/auth\//.test(url);
+
       return _origFetch(input, init).then(function (res) {
-        if (isTenantScoped && isLoggedIn() && (res.status === 401 || res.status === 403)) {
-          console.warn("[tenant-session] " + res.status + " on " + url + " — logging out");
-          logout();
+        if (isTenantScoped && !isAuthPath && isLoggedIn() && (res.status === 401 || res.status === 403)) {
+          console.warn("[tenant-session] " + res.status + " on " + url + " — ending session");
+          bounceOnExpiry();
         }
         return res;
       });
