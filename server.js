@@ -5,7 +5,8 @@ const { createProxyMiddleware } = require("http-proxy-middleware");
 const path = require("path");
 
 const app = express();
-const PORT = 3030;
+// Render / Railway / Fly / Vercel Functions all inject PORT; honour it.
+const PORT = parseInt(process.env.PORT, 10) || 3030;
 
 // 只允許存取前端需要的靜態檔案，避免暴露敏感檔案
 const ALLOWED_STATIC = [
