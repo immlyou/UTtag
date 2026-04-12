@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-TW" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UTtag — 接受邀請</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f172a;
+      --surface:   #1e293b;
+      --border:    #334155;
+      --text:      #f1f5f9;
+      --text-muted:#94a3b8;
+      --primary:   #3b82f6;
+      --primary-h: #2563eb;
+      --error-bg:  #450a0a;
+      --error-text:#fca5a5;
+      --radius:    8px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 40px 36px;
+      width: 100%;
+      max-width: 420px;
+    }
+
+    .logo {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    .logo-mark {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 56px;
+      height: 56px;
+      background: var(--primary);
+      border-radius: 14px;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -1px;
+      color: #fff;
+      margin-bottom: 12px;
+    }
+
+    .logo h1 {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .invite-banner {
+      background: #0f2a4a;
+      border: 1px solid #1e4a7a;
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      margin-bottom: 24px;
+      font-size: 13px;
+      color: #93c5fd;
+      line-height: 1.5;
+      display: none;
+    }
+
+    .invite-banner.visible { display: block; }
+
+    .invite-banner strong { color: #bfdbfe; }
+
+    .field {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 14px;
+      padding: 10px 12px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    input:focus { border-color: var(--primary); }
+
+    input::placeholder { color: var(--text-muted); }
+
+    .btn-submit {
+      width: 100%;
+      background: var(--primary);
+      border: none;
+      border-radius: var(--radius);
+      color: #fff;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 11px;
+      margin-top: 8px;
+      transition: background 0.15s;
+    }
+
+    .btn-submit:hover:not(:disabled) { background: var(--primary-h); }
+
+    .btn-submit:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .error-box {
+      background: var(--error-bg);
+      border: 1px solid #7f1d1d;
+      border-radius: var(--radius);
+      color: var(--error-text);
+      font-size: 13px;
+      padding: 10px 12px;
+      margin-top: 16px;
+      display: none;
+    }
+
+    .error-box.visible { display: block; }
+
+    .invalid-box {
+      background: var(--error-bg);
+      border: 1px solid #7f1d1d;
+      border-radius: var(--radius);
+      color: var(--error-text);
+      font-size: 13px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .back-link {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .back-link a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+
+    .back-link a:hover { text-decoration: underline; }
+
+    #form-area { display: none; }
+    #invalid-area { display: none; }
+    #loading-area { text-align: center; color: var(--text-muted); font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <div class="logo-mark">UT</div>
+      <h1>接受邀請</h1>
+    </div>
+
+    <div id="loading-area">驗證邀請連結中...</div>
+
+    <div id="invalid-area">
+      <div class="invalid-box">
+        <strong>邀請連結無效或已過期</strong><br>
+        <span style="font-size:12px; margin-top:6px; display:block;">請聯絡邀請您的管理員重新發送。</span>
+      </div>
+    </div>
+
+    <div id="form-area">
+      <div class="invite-banner" id="invite-banner"></div>
+
+      <form id="accept-form" novalidate>
+        <div class="field">
+          <label for="password">設定密碼</label>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            placeholder="至少 8 個字元"
+            autocomplete="new-password"
+            required
+          />
+        </div>
+
+        <div class="field">
+          <label for="confirm-password">確認密碼</label>
+          <input
+            type="password"
+            id="confirm-password"
+            name="confirm-password"
+            placeholder="再次輸入密碼"
+            autocomplete="new-password"
+            required
+          />
+        </div>
+
+        <button type="submit" class="btn-submit" id="btn-submit">啟用帳號</button>
+        <div class="error-box" id="error-box" role="alert"></div>
+      </form>
+    </div>
+
+    <div class="back-link">
+      <a href="/tenant-login.html">返回登入</a>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      var token = new URLSearchParams(window.location.search).get("token");
+
+      var loadingArea  = document.getElementById("loading-area");
+      var invalidArea  = document.getElementById("invalid-area");
+      var formArea     = document.getElementById("form-area");
+      var inviteBanner = document.getElementById("invite-banner");
+      var btn          = document.getElementById("btn-submit");
+      var errBox       = document.getElementById("error-box");
+
+      function showError(msg) {
+        errBox.textContent = msg;
+        errBox.classList.add("visible");
+      }
+
+      function clearError() {
+        errBox.classList.remove("visible");
+      }
+
+      function setLoading(on) {
+        btn.disabled = on;
+        btn.textContent = on ? "啟用中..." : "啟用帳號";
+      }
+
+      function showInvalid() {
+        loadingArea.style.display = "none";
+        formArea.style.display = "none";
+        invalidArea.style.display = "block";
+      }
+
+      if (!token) {
+        showInvalid();
+      } else {
+        // Fetch invite info
+        fetch("/api/tenant/invite/info?token=" + encodeURIComponent(token))
+          .then(function (resp) {
+            if (!resp.ok) { showInvalid(); return null; }
+            return resp.json();
+          })
+          .then(function (data) {
+            if (!data) return;
+            if (data.expired) { showInvalid(); return; }
+
+            inviteBanner.innerHTML =
+              "您被邀請加入 <strong>" + escapeHtml(data.client_name) + "</strong>。" +
+              "<br>帳號電子信箱：<strong>" + escapeHtml(data.email) + "</strong>";
+            inviteBanner.classList.add("visible");
+
+            loadingArea.style.display = "none";
+            formArea.style.display = "block";
+          })
+          .catch(function () { showInvalid(); });
+      }
+
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      document.getElementById("accept-form").addEventListener("submit", async function (e) {
+        e.preventDefault();
+        clearError();
+
+        var pw   = document.getElementById("password").value;
+        var conf = document.getElementById("confirm-password").value;
+
+        if (!pw || !conf) {
+          showError("請填寫所有欄位。");
+          return;
+        }
+
+        if (pw.length < 8) {
+          showError("密碼至少需要 8 個字元。");
+          return;
+        }
+
+        if (pw !== conf) {
+          showError("兩次輸入的密碼不一致。");
+          return;
+        }
+
+        setLoading(true);
+
+        try {
+          var resp = await fetch("/api/tenant/invite/accept", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token: token, password: pw })
+          });
+
+          var body;
+          try { body = await resp.json(); } catch (_) { body = {}; }
+
+          if (!resp.ok) {
+            if (resp.status === 400) {
+              showInvalid();
+            } else {
+              showError(body.error || "啟用失敗，請稍後再試。");
+            }
+            return;
+          }
+
+          // Success — redirect to login
+          window.location.href = "/tenant-login.html?invited=1";
+        } catch (err) {
+          showError("網路錯誤，請確認連線後再試。");
+        } finally {
+          setLoading(false);
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

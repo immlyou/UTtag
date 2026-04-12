@@ -12,6 +12,7 @@ const { supabase } = require("../../lib/supabase");
 const { json, error } = require("../../lib/auth");
 const { requireTenantAuth, hasPermission, logAudit, getClientIP } = require("../../lib/auth-middleware");
 const { canRead, filterFields, filterFieldsAll } = require("../../lib/field-visibility");
+const { sendInviteEmail } = require("../../lib/email");
 
 /**
  * GET /api/tenant/users
@@ -137,6 +138,27 @@ router.post("/", async (req, res) => {
       new_values: { email, name, role },
       ip_address: getClientIP(req)
     });
+
+    // Send invite email if this is an invite-style user (no password provided)
+    if (inviteToken) {
+      const appUrl = process.env.APP_URL || "http://localhost:3030";
+      const inviteUrl = `${appUrl}/invite-accept.html?token=${inviteToken}`;
+      // Look up client name for the email
+      const { data: clientData } = await supabase
+        .from("clients")
+        .select("name")
+        .eq("id", user.client_id)
+        .single();
+      const clientName = clientData?.name || "your organization";
+      sendInviteEmail({
+        to: email.toLowerCase(),
+        inviteUrl,
+        invitedBy: user.name || user.email,
+        clientName
+      }).catch(emailErr => {
+        console.error("[InviteEmail] Failed to send:", emailErr.message);
+      });
+    }
 
     json(res, newUser, 201, req);
   } catch (err) {
