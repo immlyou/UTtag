@@ -2,14 +2,14 @@ const { supabase } = require("../../lib/supabase");
 const { getAdminFromReq, cors, json, error } = require("../../lib/auth");
 
 module.exports = async function handler(req, res) {
-  if (req.method === "OPTIONS") { cors(res); return res.status(200).end(); }
-  if (req.method !== "POST") return error(res, "Method not allowed", 405);
+  if (req.method === "OPTIONS") { cors(res, req); return res.status(200).end(); }
+  if (req.method !== "POST") return error(res, "Method not allowed", 405, req);
 
   const admin = getAdminFromReq(req);
-  if (!admin) return error(res, "未授權", 401);
+  if (!admin) return error(res, "未授權", 401, req);
 
   const { name, email, company, phone, tier, notes } = req.body || {};
-  if (!name || !email) return error(res, "缺少名稱或 Email");
+  if (!name || !email) return error(res, "缺少名稱或 Email", 400, req);
 
   // 取得方案限制
   const { data: tierData } = await supabase.from("billing_tiers").select("*").eq("tier", tier || "free").single();
@@ -22,6 +22,6 @@ module.exports = async function handler(req, res) {
     .select()
     .single();
 
-  if (dbErr) return error(res, dbErr.message);
-  json(res, data, 201);
+  if (dbErr) return error(res, dbErr.message, 400, req);
+  json(res, data, 201, req);
 };

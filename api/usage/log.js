@@ -1,38 +1,34 @@
 const { supabase } = require("../../lib/supabase");
-const { cors, json, error } = require("../../lib/auth");
+const { getAdminFromReq, cors, json, error } = require("../../lib/auth");
 
 module.exports = async function handler(req, res) {
-  if (req.method === "OPTIONS") { cors(res); return res.status(200).end(); }
-  if (req.method !== "POST") return error(res, "Method not allowed", 405);
+  if (req.method === "OPTIONS") { cors(res, req); return res.status(200).end(); }
+  if (req.method !== "POST") return error(res, "Method not allowed", 405, req);
+
+  // 寫入操作需要 admin 認證
+  const admin = getAdminFromReq(req);
+  if (!admin) return error(res, "未授權", 401, req);
 
   const { api_key_id, client_id, endpoint, method, status_code, response_ms, ip_address } = req.body || {};
-  if (!api_key_id || !endpoint) return error(res, "缺少必要欄位");
+  if (!api_key_id || !endpoint) return error(res, "缺少必要欄位", 400, req);
 
   // 寫入詳細 log
   await supabase.from("usage_logs").insert({ api_key_id, client_id, endpoint, method, status_code, response_ms, ip_address });
 
-  // 更新每日統計（upsert）
+  // 使用原子操作更新每日統計，避免 race condition
   const today = new Date().toISOString().slice(0, 10);
-  const { data: existing } = await supabase
-    .from("usage_daily")
-    .select("*")
-    .eq("api_key_id", api_key_id)
-    .eq("date", today)
-    .single();
+  const isError = status_code >= 400;
+  const { error: rpcErr } = await supabase.rpc("increment_usage_daily", {
+    p_api_key_id: api_key_id,
+    p_client_id: client_id || null,
+    p_date: today,
+    p_response_ms: response_ms || 0,
+    p_is_error: isError,
+  });
 
-  if (existing) {
-    const newCount = existing.request_count + 1;
-    const newErrors = existing.error_count + (status_code >= 400 ? 1 : 0);
-    const newAvg = Math.round((existing.avg_response_ms * existing.request_count + (response_ms || 0)) / newCount);
-    await supabase.from("usage_daily").update({ request_count: newCount, error_count: newErrors, avg_response_ms: newAvg }).eq("id", existing.id);
-  } else {
-    await supabase.from("usage_daily").insert({
-      api_key_id, client_id, date: today,
-      request_count: 1,
-      error_count: status_code >= 400 ? 1 : 0,
-      avg_response_ms: response_ms || 0,
-    });
+  if (rpcErr) {
+    console.error("[usage/log] increment_usage_daily RPC failed:", rpcErr.message);
   }
 
-  json(res, { logged: true });
+  json(res, { logged: true }, 200, req);
 };

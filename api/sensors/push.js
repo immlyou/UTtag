@@ -1,13 +1,18 @@
 const { supabase } = require("../../lib/supabase");
-const { cors, json, error } = require("../../lib/auth");
+const { getAdminFromReq, getClientFromApiKey, cors, json, error } = require("../../lib/auth");
 
 module.exports = async function handler(req, res) {
-  if (req.method === "OPTIONS") { cors(res); return res.status(200).end(); }
-  if (req.method !== "POST") return error(res, "Method not allowed", 405);
+  if (req.method === "OPTIONS") { cors(res, req); return res.status(200).end(); }
+  if (req.method !== "POST") return error(res, "Method not allowed", 405, req);
+
+  // 寫入操作需要 admin 或 API Key 認證
+  const admin = getAdminFromReq(req);
+  const apiKeyData = !admin ? await getClientFromApiKey(req) : null;
+  if (!admin && !apiKeyData) return error(res, "未授權：需要 Admin Token 或 API Key", 401, req);
 
   const { mac, temperature, humidity, pressure, source, note } = req.body || {};
-  if (!mac) return error(res, "缺少 MAC 地址");
-  if (temperature == null && humidity == null && pressure == null) return error(res, "至少需要一項感測資料");
+  if (!mac) return error(res, "缺少 MAC 地址", 400, req);
+  if (temperature == null && humidity == null && pressure == null) return error(res, "至少需要一項感測資料", 400, req);
 
   const { data, error: dbErr } = await supabase
     .from("sensor_data")
@@ -22,7 +27,7 @@ module.exports = async function handler(req, res) {
     .select()
     .single();
 
-  if (dbErr) return error(res, dbErr.message);
+  if (dbErr) return error(res, dbErr.message, 400, req);
 
   // 檢查是否超過閾值
   const { data: bindings } = await supabase
@@ -43,5 +48,5 @@ module.exports = async function handler(req, res) {
     }
   });
 
-  json(res, { recorded: true, id: data.id, alerts }, 201);
+  json(res, { recorded: true, id: data.id, alerts }, 201, req);
 };

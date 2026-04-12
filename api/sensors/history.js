@@ -1,12 +1,17 @@
 const { supabase } = require("../../lib/supabase");
-const { cors, json, error } = require("../../lib/auth");
+const { getAdminFromReq, getClientFromApiKey, cors, json, error } = require("../../lib/auth");
 
 module.exports = async function handler(req, res) {
-  if (req.method === "OPTIONS") { cors(res); return res.status(200).end(); }
-  if (req.method !== "GET") return error(res, "Method not allowed", 405);
+  if (req.method === "OPTIONS") { cors(res, req); return res.status(200).end(); }
+  if (req.method !== "GET") return error(res, "Method not allowed", 405, req);
+
+  // 讀取操作需要 admin 或 API Key 認證
+  const admin = getAdminFromReq(req);
+  const apiKeyData = !admin ? await getClientFromApiKey(req) : null;
+  if (!admin && !apiKeyData) return error(res, "未授權：需要 Admin Token 或 API Key", 401, req);
 
   const { mac, hours, limit: limitStr } = req.query || {};
-  if (!mac) return error(res, "缺少 MAC 地址");
+  if (!mac) return error(res, "缺少 MAC 地址", 400, req);
 
   const hoursBack = parseInt(hours) || 24;
   const limit = Math.min(parseInt(limitStr) || 500, 2000);
@@ -20,7 +25,7 @@ module.exports = async function handler(req, res) {
     .order("created_at", { ascending: true })
     .limit(limit);
 
-  if (dbErr) return error(res, dbErr.message);
+  if (dbErr) return error(res, dbErr.message, 400, req);
 
   // 統計摘要
   const temps = (data || []).filter(d => d.temperature != null).map(d => parseFloat(d.temperature));
@@ -41,5 +46,5 @@ module.exports = async function handler(req, res) {
     } : null,
   };
 
-  json(res, { summary, data });
+  json(res, { summary, data }, 200, req);
 };

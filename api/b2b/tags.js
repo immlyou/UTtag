@@ -5,15 +5,15 @@ const UTTEC_API = "https://utfind.api.beta.uttec.com.tw/api/v1/tags";
 const UTTEC_KEY = process.env.UTTEC_API_KEY || "";
 
 module.exports = async function handler(req, res) {
-  if (req.method === "OPTIONS") { cors(res); return res.status(200).end(); }
-  if (req.method !== "POST") return error(res, "Method not allowed", 405);
+  if (req.method === "OPTIONS") { cors(res, req); return res.status(200).end(); }
+  if (req.method !== "POST") return error(res, "Method not allowed", 405, req);
 
   // 驗證客戶 API Key
   const keyData = await getClientFromApiKey(req);
-  if (!keyData) return error(res, "無效的 API Key", 401);
+  if (!keyData) return error(res, "無效的 API Key", 401, req);
 
   const client = keyData.clients;
-  if (!client || client.status !== "active") return error(res, "客戶已停用", 403);
+  if (!client || client.status !== "active") return error(res, "客戶已停用", 403, req);
 
   // 檢查每日額度
   const today = new Date().toISOString().slice(0, 10);
@@ -25,11 +25,11 @@ module.exports = async function handler(req, res) {
     .single();
 
   if (daily && keyData.daily_limit && daily.request_count >= keyData.daily_limit) {
-    return error(res, `已超過每日限額 (${keyData.daily_limit} 次)`, 429);
+    return error(res, `已超過每日限額 (${keyData.daily_limit} 次)`, 429, req);
   }
 
   const { action, macs, mac, startTime, endTime } = req.body || {};
-  if (!action) return error(res, "缺少 action 參數 (all / latest / history)");
+  if (!action) return error(res, "缺少 action 參數 (all / latest / history)", 400, req);
 
   // 查詢此客戶可存取的 TAG
   const { data: allowedTags } = await supabase
@@ -39,7 +39,7 @@ module.exports = async function handler(req, res) {
 
   const allowedMacs = (allowedTags || []).map(t => t.mac.toUpperCase());
 
-  if (!allowedMacs.length) return error(res, "此帳號尚未綁定任何 TAG");
+  if (!allowedMacs.length) return error(res, "此帳號尚未綁定任何 TAG", 400, req);
 
   // 根據 action 轉發請求到 UTTEC
   const startMs = Date.now();
@@ -47,24 +47,22 @@ module.exports = async function handler(req, res) {
   let endpoint = action;
 
   if (action === "all") {
-    // 取得所有 Tag — 之後過濾只回傳客戶綁定的
     uttecBody = { key: UTTEC_KEY };
   } else if (action === "latest") {
-    // 客戶傳入的 macs 要和綁定的做交集
     const requestedMacs = (macs || []).map(m => m.toUpperCase());
     const filtered = requestedMacs.length
       ? requestedMacs.filter(m => allowedMacs.includes(m))
       : allowedMacs;
-    if (!filtered.length) return error(res, "請求的 TAG 不在您的授權範圍內", 403);
+    if (!filtered.length) return error(res, "請求的 TAG 不在您的授權範圍內", 403, req);
     uttecBody.macs = filtered;
   } else if (action === "history") {
     const upperMac = (mac || "").toUpperCase();
-    if (!allowedMacs.includes(upperMac)) return error(res, "此 TAG 不在您的授權範圍內", 403);
+    if (!allowedMacs.includes(upperMac)) return error(res, "此 TAG 不在您的授權範圍內", 403, req);
     uttecBody.mac = upperMac;
     if (startTime) uttecBody.startTime = startTime;
     if (endTime) uttecBody.endTime = endTime;
   } else {
-    return error(res, "不支援的 action，可用: all / latest / history");
+    return error(res, "不支援的 action，可用: all / latest / history", 400, req);
   }
 
   try {
@@ -95,14 +93,14 @@ module.exports = async function handler(req, res) {
         used: (daily?.request_count || 0) + 1,
         limit: keyData.daily_limit,
       },
-    });
+    }, 200, req);
   } catch (e) {
     logUsage(keyData.id, client.id, `/b2b/tags/${action}`, Date.now() - startMs, 500);
-    error(res, `上游 API 錯誤: ${e.message}`, 502);
+    error(res, `上游 API 錯誤: ${e.message}`, 502, req);
   }
 };
 
-// 非同步記錄用量（不阻塞回應）
+// 非同步記錄用量（不阻塞回應），使用原子操作避免 race condition
 async function logUsage(apiKeyId, clientId, endpoint, responseMs, statusCode) {
   try {
     await supabase.from("usage_logs").insert({
@@ -115,30 +113,19 @@ async function logUsage(apiKeyId, clientId, endpoint, responseMs, statusCode) {
     });
 
     const today = new Date().toISOString().slice(0, 10);
-    const { data: existing } = await supabase
-      .from("usage_daily")
-      .select("*")
-      .eq("api_key_id", apiKeyId)
-      .eq("date", today)
-      .single();
+    const isError = statusCode >= 400;
+    const { error: rpcErr } = await supabase.rpc("increment_usage_daily", {
+      p_api_key_id: apiKeyId,
+      p_client_id: clientId,
+      p_date: today,
+      p_response_ms: responseMs,
+      p_is_error: isError,
+    });
 
-    if (existing) {
-      await supabase.from("usage_daily").update({
-        request_count: existing.request_count + 1,
-        error_count: existing.error_count + (statusCode >= 400 ? 1 : 0),
-        avg_response_ms: Math.round(
-          (existing.avg_response_ms * existing.request_count + responseMs) / (existing.request_count + 1)
-        ),
-      }).eq("id", existing.id);
-    } else {
-      await supabase.from("usage_daily").insert({
-        api_key_id: apiKeyId,
-        client_id: clientId,
-        date: today,
-        request_count: 1,
-        error_count: statusCode >= 400 ? 1 : 0,
-        avg_response_ms: responseMs,
-      });
+    if (rpcErr) {
+      console.error("[b2b/tags] increment_usage_daily RPC failed:", rpcErr.message);
     }
-  } catch {}
+  } catch (e) {
+    console.error("[b2b/tags] logUsage failed:", e.message);
+  }
 }
