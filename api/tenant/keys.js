@@ -7,7 +7,7 @@
 const express = require("express");
 const router = express.Router();
 const crypto = require("crypto");
-const { supabase } = require("../../lib/supabase");
+const { supabase, getUserScopedClient } = require("../../lib/supabase");
 const { json, error } = require("../../lib/auth");
 const { requireTenantAuth, hasPermission, logAudit, getClientIP } = require("../../lib/auth-middleware");
 
@@ -33,7 +33,8 @@ router.get("/", async (req, res) => {
   }
 
   try {
-    const { data: keys, error: dbErr } = await supabase
+    const db = getUserScopedClient(req);
+    const { data: keys, error: dbErr } = await db
       .from("api_keys")
       .select("id, name, key, permissions, rate_limit, daily_limit, status, last_used_at, created_at")
       .eq("client_id", user.client_id)
