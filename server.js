@@ -11,6 +11,7 @@ const PORT = 3030;
 const ALLOWED_STATIC = [
   "index.html", "admin.html", "tenant-login.html", "tenant.html", "admin-impersonate.html", "app.js", "style.css",
   "sw.js", "manifest.json",
+  "password-forgot.html", "password-reset.html", "invite-accept.html",
 ];
 // Directory prefixes that are safe to expose (served read-only by express.static).
 const ALLOWED_STATIC_DIRS = ["js/"];
@@ -63,6 +64,8 @@ app.use("/api/admin/impersonate", require("./api/admin/impersonate"));
 
 // Tenant routes (Tenant Users)
 app.use("/api/tenant/auth", require("./api/tenant/auth"));
+app.use("/api/tenant/password", require("./api/tenant/password-flow"));
+app.use("/api/tenant/invite", require("./api/tenant/invite-flow"));
 app.use("/api/tenant/users", require("./api/tenant/users"));
 app.use("/api/tenant/devices", require("./api/tenant/devices"));
 app.use("/api/tenant/keys", require("./api/tenant/keys"));
