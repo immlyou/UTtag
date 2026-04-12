@@ -1,5 +1,5 @@
 // ╔══════════════════════════════════════════════════════════════════╗
-// ║  UTFind IoT Tag Dashboard — app.js  v4.1.0                     ║
+// ║  UTFind IoT Tag Dashboard — app.js  v4.5.0                     ║
 // ╠══════════════════════════════════════════════════════════════════╣
 // ║  功能模組索引：                                                  ║
 // ║                                                                 ║
@@ -456,6 +456,9 @@ async function connect() {
     populateShareSelect();
     populateSensorSelects();
     loadSensorBindings();
+    populatePdaTagCheckboxes();
+    renderPdaProfiles();
+    renderPdaSearchSelect();
     updateSensorSourceBadge();
     setTagFilter(tagTypeFilter);
 
@@ -483,8 +486,12 @@ let useFakeSensors = true; // Supabase 未設定時用假資料
 
 async function fetchSensorData() {
   try {
-    // 不送 MAC 清單，直接取所有感測器最新資料（通常只有幾筆）
-    const resp = await fetch("/api/sensors/latest");
+    const adminToken = localStorage.getItem("utfind_admin_token") || "";
+    const headers = {};
+    if (adminToken) headers["Authorization"] = `Bearer ${adminToken}`;
+    else if (apiKey) headers["X-API-Key"] = apiKey;
+
+    const resp = await fetch("/api/sensors/latest", { headers });
     if (!resp.ok) throw new Error("sensor API error");
     const data = await resp.json();
     if (data && data.length > 0) {
@@ -492,7 +499,7 @@ async function fetchSensorData() {
       data.forEach(s => { sensorDataCache[s.mac] = s; });
       return;
     }
-  } catch { /* Supabase 未設定，使用假資料 */ }
+  } catch { /* Supabase 未設定或未授權，使用假資料 */ }
   useFakeSensors = true;
 }
 
@@ -738,6 +745,9 @@ async function fetchLatest() {
     checkGeofenceAlerts();
     cacheLatestData();
     evaluateAlertRules();
+    updateTaskMileage();
+    checkTaskArrivals();
+    // deviceAutoCheckin removed — PDA location now uses Tag binding
     const status = document.getElementById("key-status");
     if (status) {
       status.className = "status success";
@@ -813,10 +823,12 @@ function checkAlerts() {
       lastNotifiedSos.add(tag.mac);
       pushAlert("🚨", `${alias} 發出 SOS 求救！`, "danger");
       playAlertSound(800, 3);
+      triggerWebhook("sos", { mac: tag.mac, alias, status: "sos", lat: tag.lastLatitude, lng: tag.lastLongitude });
     }
     if (tag.lastBatteryLevel != null && tag.lastBatteryLevel <= 20 && !lastNotifiedLowBat.has(tag.mac)) {
       lastNotifiedLowBat.add(tag.mac);
       pushAlert("🔋", `${alias} 電量不足 (${tag.lastBatteryLevel}%)`, "warning");
+      triggerWebhook("lowbat", { mac: tag.mac, alias, battery: tag.lastBatteryLevel });
     }
     // 溫度警示
     if (tag.temperature != null && (tag.temperature < TEMP_MIN || tag.temperature > TEMP_MAX) && !lastNotifiedTemp.has(tag.mac)) {
@@ -824,6 +836,7 @@ function checkAlerts() {
       const dir = tag.temperature < TEMP_MIN ? "過低" : "過高";
       pushAlert("🌡️", `${alias} 溫度${dir}！(${tag.temperature}°C，範圍 ${TEMP_MIN}~${TEMP_MAX}°C)`, "danger");
       playAlertSound(600, 2);
+      triggerWebhook("temp", { mac: tag.mac, alias, temperature: tag.temperature, min: TEMP_MIN, max: TEMP_MAX });
     }
     if (tag.status !== "sos") lastNotifiedSos.delete(tag.mac);
     if (tag.lastBatteryLevel > 20) lastNotifiedLowBat.delete(tag.mac);
@@ -832,13 +845,71 @@ function checkAlerts() {
 }
 
 // ---------- 浮動告警面板 ----------
-let alertPanelItems = [];
+let alertPanelItems = JSON.parse(localStorage.getItem("utfind_alerts") || "[]");
+let alertFilter = "active"; // "active", "acknowledged", "all"
+
+// 重建 Date 物件
+alertPanelItems.forEach(a => {
+  a.time = new Date(a.time);
+  if (a.acknowledgedAt) a.acknowledgedAt = new Date(a.acknowledgedAt);
+});
 
 function pushAlert(icon, message, type = "danger") {
-  const item = { id: Date.now() + Math.random(), icon, message, type, time: new Date() };
+  const item = {
+    id: Date.now() + Math.random(),
+    icon,
+    message,
+    type,
+    time: new Date(),
+    status: "active",
+    acknowledgedBy: null,
+    acknowledgedAt: null,
+    notes: null
+  };
   alertPanelItems.unshift(item);
-  if (alertPanelItems.length > 50) alertPanelItems.length = 50;
+  if (alertPanelItems.length > 100) alertPanelItems.length = 100;
+  saveAlertItems();
   renderAlertPanel();
+}
+
+function saveAlertItems() {
+  localStorage.setItem("utfind_alerts", JSON.stringify(alertPanelItems));
+}
+
+function getFilteredAlerts() {
+  switch (alertFilter) {
+    case "active": return alertPanelItems.filter(a => a.status === "active");
+    case "acknowledged": return alertPanelItems.filter(a => a.status === "acknowledged");
+    default: return alertPanelItems;
+  }
+}
+
+function setAlertFilter(filter) {
+  alertFilter = filter;
+  document.querySelectorAll(".alert-filter-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.filter === filter);
+  });
+  renderAlertPanel();
+}
+
+function acknowledgeAlert(id) {
+  const alert = alertPanelItems.find(a => a.id === id);
+  if (!alert) return;
+
+  const notes = prompt("確認備註 (可選):", "");
+  const acknowledger = prompt("確認人:", currentRole || "操作員");
+
+  if (acknowledger === null) return;
+
+  alert.status = "acknowledged";
+  alert.acknowledgedBy = acknowledger || "未知";
+  alert.acknowledgedAt = new Date();
+  alert.notes = notes || null;
+
+  saveAlertItems();
+  renderAlertPanel();
+  addAudit(`確認告警: ${alert.message.substring(0, 30)}... by ${alert.acknowledgedBy}`);
+  showToast("告警已確認", "success", 2000);
 }
 
 function renderAlertPanel() {
@@ -846,30 +917,55 @@ function renderAlertPanel() {
   const list = document.getElementById("alert-panel-list");
   const count = document.getElementById("alert-panel-count");
   if (!panel || !list) return;
+
+  const activeCount = alertPanelItems.filter(a => a.status === "active").length;
+
   if (alertPanelItems.length === 0) { panel.style.display = "none"; return; }
   panel.style.display = "flex";
-  count.textContent = alertPanelItems.length;
-  list.innerHTML = alertPanelItems.map(a => {
+  count.textContent = activeCount;
+
+  const filtered = getFilteredAlerts();
+  const ackCount = alertPanelItems.filter(a => a.status === "acknowledged").length;
+
+  list.innerHTML = `
+    <div class="alert-filter-bar">
+      <button class="alert-filter-btn ${alertFilter === 'active' ? 'active' : ''}" data-filter="active" onclick="setAlertFilter('active')">待處理 (${activeCount})</button>
+      <button class="alert-filter-btn ${alertFilter === 'acknowledged' ? 'active' : ''}" data-filter="acknowledged" onclick="setAlertFilter('acknowledged')">已確認 (${ackCount})</button>
+      <button class="alert-filter-btn ${alertFilter === 'all' ? 'active' : ''}" data-filter="all" onclick="setAlertFilter('all')">全部</button>
+    </div>
+  ` + filtered.map(a => {
     const t = a.time.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     const cls = a.type === "warning" ? " warning" : "";
-    return `<div class="alert-panel-item${cls}">
+    const ackCls = a.status === "acknowledged" ? " acknowledged" : "";
+    const ackInfo = a.status === "acknowledged"
+      ? `<div class="alert-ack-info">✓ ${a.acknowledgedBy} · ${a.acknowledgedAt.toLocaleTimeString("zh-TW")}${a.notes ? ` · ${a.notes}` : ""}</div>`
+      : "";
+    const ackBtn = a.status === "active"
+      ? `<button class="alert-ack-btn" onclick="acknowledgeAlert(${a.id})" title="確認">✓</button>`
+      : "";
+
+    return `<div class="alert-panel-item${cls}${ackCls}">
       <span class="alert-icon">${a.icon}</span>
       <div class="alert-body">
         <div class="alert-msg">${a.message}</div>
         <div class="alert-time">${t}</div>
+        ${ackInfo}
       </div>
-      <button class="alert-dismiss" onclick="dismissAlertItem(${a.id})" title="關閉">&times;</button>
+      ${ackBtn}
+      <button class="alert-dismiss" onclick="dismissAlertItem(${a.id})" title="刪除">&times;</button>
     </div>`;
   }).join("");
 }
 
 function dismissAlertItem(id) {
   alertPanelItems = alertPanelItems.filter(a => a.id !== id);
+  saveAlertItems();
   renderAlertPanel();
 }
 
 function dismissAlertPanel() {
   alertPanelItems = [];
+  saveAlertItems();
   const panel = document.getElementById("alert-panel");
   if (panel) panel.style.display = "none";
 }
@@ -1254,6 +1350,11 @@ function switchPanel(name) {
   const nav = document.getElementById(`nav-${name}`);
   if (panel) panel.classList.add("active");
   if (nav) nav.classList.add("active");
+
+  // Initialize admin panel if switching to it
+  if (name === "admin" && typeof initAdminPanel === "function") {
+    initAdminPanel();
+  }
 }
 
 function toggleSection(id) {
@@ -1733,6 +1834,7 @@ function checkGeofenceAlerts() {
       if (!inside && !geofenceAlertSent.has(key)) {
         geofenceAlertSent.add(key);
         pushAlert("📍", `${alias} 離開圍欄「${gf.name}」`, "warning");
+        triggerWebhook("geofence", { mac: tag.mac, alias, geofenceName: gf.name, geofenceId: gf.id, lat: tag.lastLatitude, lng: tag.lastLongitude });
       }
       if (inside) geofenceAlertSent.delete(key);
     });
@@ -2770,32 +2872,173 @@ function populateTaskTagSelect() {
   }).join("");
 }
 
+function populateTaskDestinationSelect() {
+  const sel = document.getElementById("task-destination");
+  if (!sel) return;
+  sel.innerHTML = '<option value="">不設定</option>' +
+    geofences.map(gf => `<option value="${gf.id}">${gf.name}</option>`).join("");
+}
+
 function saveTask() {
   const name = document.getElementById("task-name").value.trim();
   const mac = document.getElementById("task-tag-select").value;
   const deadline = document.getElementById("task-deadline").value;
+  const shipmentNo = document.getElementById("task-shipment-no")?.value.trim() || null;
+  const destinationGf = document.getElementById("task-destination")?.value || null;
 
   if (!name) { showToast("請輸入任務名稱", "warning"); return; }
 
-  tasks.push({
+  const tag = latestData.find(t => t.mac === mac);
+
+  const task = {
     id: Date.now().toString(),
     name,
     mac,
     deadline: deadline || null,
+    shipmentNo,
+    destinationGeofenceId: destinationGf,
     status: "active",
     createdAt: new Date().toISOString(),
-  });
+    startPosition: tag && tag.lastLatitude != null ? { lat: tag.lastLatitude, lng: tag.lastLongitude, time: new Date().toISOString() } : null,
+    totalMileageKm: 0,
+    lastMileageUpdate: null,
+    mileageHistory: [],
+    arrivedAt: null,
+    completedAt: null,
+    arrivalNotified: false
+  };
+
+  tasks.push(task);
   localStorage.setItem("utfind_tasks", JSON.stringify(tasks));
   document.getElementById("task-name").value = "";
+  if (document.getElementById("task-shipment-no")) document.getElementById("task-shipment-no").value = "";
   renderTaskList();
-  addAudit(`建立任務: ${name}`);
+  addAudit(`建立任務: ${name}${shipmentNo ? ` (${shipmentNo})` : ""}`);
   showToast(`已建立任務「${name}」`, "success");
+}
+
+function updateTaskMileage() {
+  let updated = false;
+  tasks.forEach(task => {
+    if (task.status !== "active" || !task.mac) return;
+
+    const tag = latestData.find(t => t.mac === task.mac);
+    if (!tag || tag.lastLatitude == null) return;
+
+    const currentPos = { lat: tag.lastLatitude, lng: tag.lastLongitude };
+
+    // 初始化歷史
+    if (task.mileageHistory.length === 0 && task.startPosition) {
+      task.mileageHistory.push({ ...task.startPosition });
+    }
+
+    // 計算與上一點的距離
+    if (task.mileageHistory.length > 0) {
+      const lastPoint = task.mileageHistory[task.mileageHistory.length - 1];
+      const distKm = haversine(lastPoint.lat, lastPoint.lng, currentPos.lat, currentPos.lng);
+
+      // 移動超過 10 公尺才記錄
+      if (distKm > 0.01) {
+        task.totalMileageKm += distKm;
+        task.mileageHistory.push({ lat: currentPos.lat, lng: currentPos.lng, time: new Date().toISOString() });
+        task.lastMileageUpdate = new Date().toISOString();
+        updated = true;
+
+        // 保持歷史記錄在可控範圍
+        if (task.mileageHistory.length > 500) {
+          task.mileageHistory = task.mileageHistory.slice(-250);
+        }
+      }
+    }
+  });
+  if (updated) localStorage.setItem("utfind_tasks", JSON.stringify(tasks));
+}
+
+function checkTaskArrivals() {
+  let updated = false;
+  tasks.forEach(task => {
+    if (task.status !== "active" || !task.destinationGeofenceId || task.arrivalNotified) return;
+
+    const tag = latestData.find(t => t.mac === task.mac);
+    if (!tag || tag.lastLatitude == null) return;
+
+    const gf = geofences.find(g => g.id === task.destinationGeofenceId);
+    if (!gf) return;
+
+    const dist = haversine(tag.lastLatitude, tag.lastLongitude, gf.lat, gf.lng) * 1000;
+    const arrived = dist <= gf.radius;
+
+    if (arrived && !task.arrivalNotified) {
+      task.arrivedAt = new Date().toISOString();
+      task.arrivalNotified = true;
+      updated = true;
+
+      const alias = tagAliases[task.mac] || task.mac;
+      pushAlert("🎯", `${task.name}${task.shipmentNo ? ` (${task.shipmentNo})` : ""} 已抵達「${gf.name}」`, "success");
+      showToast(`任務「${task.name}」已抵達目的地`, "success");
+      addEvent("info", `任務「${task.name}」已抵達 ${gf.name}`);
+
+      triggerWebhook("arrival", {
+        taskId: task.id,
+        taskName: task.name,
+        shipmentNo: task.shipmentNo,
+        mac: task.mac,
+        alias,
+        geofenceName: gf.name,
+        arrivedAt: task.arrivedAt,
+        totalMileageKm: task.totalMileageKm.toFixed(2)
+      });
+
+      renderTaskList();
+    }
+  });
+  if (updated) localStorage.setItem("utfind_tasks", JSON.stringify(tasks));
+}
+
+function completeTask(id) {
+  const task = tasks.find(t => t.id === id);
+  if (!task) return;
+
+  task.status = "done";
+  task.completedAt = new Date().toISOString();
+
+  localStorage.setItem("utfind_tasks", JSON.stringify(tasks));
+  renderTaskList();
+
+  const mileage = task.totalMileageKm.toFixed(2);
+  addAudit(`完成任務: ${task.name}${task.shipmentNo ? ` (${task.shipmentNo})` : ""} - 里程: ${mileage} km`);
+  showToast(`任務「${task.name}」已完成，總里程 ${mileage} km`, "success");
+}
+
+function viewTaskMileage(id) {
+  const task = tasks.find(t => t.id === id);
+  if (!task) return;
+
+  const destGf = task.destinationGeofenceId ? geofences.find(g => g.id === task.destinationGeofenceId) : null;
+
+  const info = `
+任務: ${task.name}
+${task.shipmentNo ? `運單號: ${task.shipmentNo}\n` : ""}
+總里程: ${task.totalMileageKm.toFixed(2)} km
+起點: ${task.startPosition ? `${task.startPosition.lat.toFixed(4)}, ${task.startPosition.lng.toFixed(4)}` : "未記錄"}
+軌跡點: ${task.mileageHistory.length} 筆
+目的地: ${destGf ? destGf.name : "未設定"}
+${task.arrivedAt ? `抵達時間: ${new Date(task.arrivedAt).toLocaleString()}` : "尚未抵達"}
+${task.completedAt ? `完成時間: ${new Date(task.completedAt).toLocaleString()}` : ""}
+  `.trim();
+
+  alert(info);
 }
 
 function toggleTaskStatus(id) {
   const task = tasks.find(t => t.id === id);
   if (task) {
     task.status = task.status === "done" ? "active" : "done";
+    if (task.status === "active") {
+      task.arrivalNotified = false;
+      task.arrivedAt = null;
+      task.completedAt = null;
+    }
     localStorage.setItem("utfind_tasks", JSON.stringify(tasks));
     renderTaskList();
   }
@@ -2816,8 +3059,10 @@ function renderTaskList() {
   container.innerHTML = tasks.map(t => {
     const alias = tagAliases[t.mac] || t.mac;
     const isOverdue = t.deadline && new Date(t.deadline) < new Date() && t.status !== "done";
-    const statusClass = t.status === "done" ? "done" : isOverdue ? "overdue" : "active";
-    const statusText = t.status === "done" ? "完成" : isOverdue ? "逾期" : "進行中";
+    const statusClass = t.status === "done" ? "done" : t.arrivedAt ? "arrived" : isOverdue ? "overdue" : "active";
+    const statusText = t.status === "done" ? "完成" : t.arrivedAt ? "已抵達" : isOverdue ? "逾期" : "進行中";
+    const mileage = t.totalMileageKm ? t.totalMileageKm.toFixed(2) : "0.00";
+    const destGf = t.destinationGeofenceId ? geofences.find(g => g.id === t.destinationGeofenceId) : null;
 
     return `
       <div class="task-card">
@@ -2825,11 +3070,16 @@ function renderTaskList() {
           <span class="task-name" style="${t.status === 'done' ? 'text-decoration:line-through;opacity:0.5;' : ''}">${t.name}</span>
           <span class="task-status-badge ${statusClass}">${statusText}</span>
         </div>
+        ${t.shipmentNo ? `<div class="task-shipment">📦 ${t.shipmentNo}</div>` : ""}
         <div class="task-meta">
           📱 ${alias} ${t.deadline ? ` · 截止: ${formatTime(t.deadline)}` : ""}
         </div>
-        <div style="margin-top:6px;display:flex;gap:4px;">
-          <button class="gf-btn" onclick="toggleTaskStatus('${t.id}')">${t.status === "done" ? "重啟" : "完成"}</button>
+        <div class="task-meta">
+          🛣️ ${mileage} km ${destGf ? ` · 目的地: ${destGf.name}` : ""}${t.arrivedAt ? ` · 抵達: ${formatTime(t.arrivedAt)}` : ""}
+        </div>
+        <div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap;">
+          ${t.status !== "done" ? `<button class="gf-btn" onclick="completeTask('${t.id}')">完成</button>` : `<button class="gf-btn" onclick="toggleTaskStatus('${t.id}')">重啟</button>`}
+          <button class="gf-btn" onclick="viewTaskMileage('${t.id}')">里程詳情</button>
           <button class="gf-btn gf-del" onclick="deleteTask('${t.id}')">刪除</button>
         </div>
       </div>
@@ -3015,6 +3265,7 @@ function loadIntegrationConfig() {
 
 // ---------- API Webhook ----------
 let webhookConfig = JSON.parse(localStorage.getItem("utfind_webhook_config") || "{}");
+let webhookDeliveryLog = JSON.parse(localStorage.getItem("utfind_webhook_log") || "[]");
 
 function saveWebhookConfig() {
   webhookConfig = {
@@ -3024,6 +3275,7 @@ function saveWebhookConfig() {
       lowbat: document.getElementById("wh-lowbat").checked,
       temp: document.getElementById("wh-temp").checked,
       geofence: document.getElementById("wh-geofence").checked,
+      arrival: document.getElementById("wh-arrival")?.checked ?? true,
     },
   };
   localStorage.setItem("utfind_webhook_config", JSON.stringify(webhookConfig));
@@ -3037,20 +3289,83 @@ function loadWebhookConfig() {
     if (el) el.value = webhookConfig.url;
   }
   if (webhookConfig.events) {
-    ["sos", "lowbat", "temp", "geofence"].forEach(k => {
+    ["sos", "lowbat", "temp", "geofence", "arrival"].forEach(k => {
       const el = document.getElementById(`wh-${k}`);
       if (el && webhookConfig.events[k] !== undefined) el.checked = webhookConfig.events[k];
     });
   }
+  renderWebhookLog();
 }
 
 function triggerWebhook(eventType, payload) {
   if (!webhookConfig.url || !webhookConfig.events || !webhookConfig.events[eventType]) return;
+
+  const logEntry = {
+    id: Date.now().toString(),
+    eventType,
+    payload,
+    timestamp: new Date().toISOString(),
+    status: "pending"
+  };
+
   fetch(webhookConfig.url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ event: eventType, data: payload, timestamp: new Date().toISOString() }),
-  }).catch(e => console.log("Webhook trigger error:", e));
+    body: JSON.stringify({ event: eventType, data: payload, timestamp: logEntry.timestamp }),
+  })
+  .then(response => {
+    logEntry.status = response.ok ? "success" : "failed";
+    logEntry.httpStatus = response.status;
+    if (response.ok) {
+      showToast(`Webhook 發送成功: ${eventType}`, "success", 3000);
+    } else {
+      showToast(`Webhook 發送失敗: HTTP ${response.status}`, "danger");
+    }
+  })
+  .catch(e => {
+    logEntry.status = "error";
+    logEntry.error = e.message;
+    showToast(`Webhook 錯誤: ${e.message}`, "danger");
+    console.log("Webhook trigger error:", e);
+  })
+  .finally(() => {
+    webhookDeliveryLog.unshift(logEntry);
+    if (webhookDeliveryLog.length > 100) webhookDeliveryLog.length = 100;
+    localStorage.setItem("utfind_webhook_log", JSON.stringify(webhookDeliveryLog));
+    renderWebhookLog();
+  });
+}
+
+function renderWebhookLog() {
+  const container = document.getElementById("webhook-log-list");
+  if (!container) return;
+
+  if (webhookDeliveryLog.length === 0) {
+    container.innerHTML = '<div class="empty-state">尚無 Webhook 記錄</div>';
+    return;
+  }
+
+  container.innerHTML = webhookDeliveryLog.slice(0, 20).map(entry => {
+    const statusIcon = entry.status === "success" ? "✅" : entry.status === "failed" || entry.status === "error" ? "❌" : "⏳";
+    const statusClass = entry.status === "success" ? "" : entry.status === "failed" || entry.status === "error" ? "error" : "";
+    const time = new Date(entry.timestamp).toLocaleString("zh-TW");
+    return `
+      <div class="event-item ${statusClass}" style="${entry.status !== 'success' ? 'border-left:3px solid var(--danger);' : 'border-left:3px solid var(--success);'}">
+        <span class="event-icon">${statusIcon}</span>
+        <div class="event-body">
+          <div class="event-msg">${entry.eventType.toUpperCase()} - ${entry.payload.alias || entry.payload.mac || '--'}</div>
+          <div class="event-time">${time}${entry.httpStatus ? ` · HTTP ${entry.httpStatus}` : ""}${entry.error ? ` · ${entry.error}` : ""}</div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function clearWebhookLog() {
+  webhookDeliveryLog = [];
+  localStorage.setItem("utfind_webhook_log", JSON.stringify(webhookDeliveryLog));
+  renderWebhookLog();
+  showToast("Webhook 記錄已清除", "info");
 }
 
 // ================================================================
@@ -3269,6 +3584,212 @@ function generateGDPReport() {
   win.print();
   addAudit(`產出 GDP 報告: ${alias}`);
   addEvent("info", `產出 ${alias} 的 GDP/GSP 合規報告`);
+}
+
+function generateHACCPReport() {
+  // 計算所有有批號綁定的 Tag 風險
+  const riskData = latestData.filter(tag => batchBindings[tag.mac]).map(tag => {
+    const alias = tagAliases[tag.mac] || tag.mac;
+    const batch = batchBindings[tag.mac];
+    const zone = tempZones[tag.mac] || { type: "cold", min: TEMP_MIN, max: TEMP_MAX };
+    const excursion = excursionTimers[tag.mac] || { totalMinutes: 0 };
+
+    let riskScore = 0;
+    let riskFactors = [];
+
+    // 溫度風險
+    if (tag.temperature != null) {
+      if (tag.temperature < zone.min - 5 || tag.temperature > zone.max + 5) {
+        riskScore += 3; riskFactors.push("嚴重溫度偏離");
+      } else if (tag.temperature < zone.min || tag.temperature > zone.max) {
+        riskScore += 2; riskFactors.push("溫度逸脫");
+      }
+    }
+
+    // 逸脫時間風險
+    if (excursion.totalMinutes >= 30) {
+      riskScore += 3; riskFactors.push("逸脫超過30分鐘");
+    } else if (excursion.totalMinutes >= 15) {
+      riskScore += 2; riskFactors.push("逸脫超過15分鐘");
+    } else if (excursion.totalMinutes > 0) {
+      riskScore += 1; riskFactors.push("短暫逸脫");
+    }
+
+    // 電量風險
+    if ((tag.lastBatteryLevel ?? 100) <= 10) {
+      riskScore += 2; riskFactors.push("電量極低");
+    } else if ((tag.lastBatteryLevel ?? 100) <= 20) {
+      riskScore += 1; riskFactors.push("低電量");
+    }
+
+    // 效期風險
+    if (batch.expiry) {
+      const daysToExpiry = Math.ceil((new Date(batch.expiry) - new Date()) / (1000 * 60 * 60 * 24));
+      if (daysToExpiry < 0) {
+        riskScore += 3; riskFactors.push("已過期");
+      } else if (daysToExpiry <= 7) {
+        riskScore += 2; riskFactors.push(`${daysToExpiry}天後到期`);
+      } else if (daysToExpiry <= 30) {
+        riskScore += 1; riskFactors.push(`${daysToExpiry}天後到期`);
+      }
+    }
+
+    const riskLevel = riskScore >= 5 ? "high" : riskScore >= 2 ? "medium" : "low";
+    const riskLevelText = riskScore >= 5 ? "高風險" : riskScore >= 2 ? "中風險" : "低風險";
+
+    return { mac: tag.mac, alias, batch, zone, excursion, tag, riskScore, riskFactors, riskLevel, riskLevelText };
+  });
+
+  if (riskData.length === 0) {
+    showToast("尚無綁定批號的 Tag，無法產生 HACCP 報告", "warning");
+    return;
+  }
+
+  const win = window.open("", "_blank");
+  win.document.write(`<!DOCTYPE html><html><head><title>HACCP 風險評估報告</title>
+    <style>
+      body{font-family:sans-serif;padding:30px;color:#333;max-width:900px;margin:0 auto;}
+      h1{color:#ef4444;font-size:20px;text-align:center;}
+      .subtitle{text-align:center;color:#666;font-size:12px;margin-bottom:20px;}
+      table{width:100%;border-collapse:collapse;margin:16px 0;font-size:11px;}
+      th,td{border:1px solid #ddd;padding:8px;text-align:left;}
+      th{background:#f0f2f5;font-weight:600;}
+      .risk-high{background:#fee2e2;color:#dc2626;font-weight:700;}
+      .risk-medium{background:#fef3c7;color:#d97706;font-weight:600;}
+      .risk-low{background:#d1fae5;color:#059669;}
+      .section{margin:20px 0;}
+      .section h2{font-size:14px;color:#333;border-bottom:2px solid #ef4444;padding-bottom:4px;}
+      .ccp{background:#fef2f2;border:1px solid #fecaca;padding:12px;border-radius:4px;margin:10px 0;}
+      .ccp-title{font-weight:700;color:#dc2626;margin-bottom:6px;}
+      .stamp{text-align:center;margin:30px 0;font-size:11px;color:#999;}
+      @media print{body{padding:10px;} .no-print{display:none;}}
+    </style></head><body>
+    <h1>HACCP 風險評估報告</h1>
+    <p class="subtitle">Hazard Analysis and Critical Control Points — 危害分析重要管制點</p>
+
+    <div class="section"><h2>風險矩陣總覽</h2>
+    <table>
+      <tr><th>Tag</th><th>批號</th><th>溫層</th><th>當前溫度</th><th>逸脫時間</th><th>風險分數</th><th>風險等級</th><th>風險因子</th></tr>
+      ${riskData.map(r => `
+        <tr class="risk-${r.riskLevel}">
+          <td>${r.alias}</td>
+          <td>${r.batch.batchNo}</td>
+          <td>${r.zone.type === "cold" ? "冷藏" : r.zone.type === "frozen" ? "冷凍" : "常溫"} (${r.zone.min}~${r.zone.max}°C)</td>
+          <td>${r.tag.temperature ?? "--"}°C</td>
+          <td>${r.excursion.totalMinutes.toFixed(1)} 分鐘</td>
+          <td>${r.riskScore}</td>
+          <td>${r.riskLevelText}</td>
+          <td>${r.riskFactors.join(", ") || "無"}</td>
+        </tr>
+      `).join("")}
+    </table></div>
+
+    <div class="section"><h2>關鍵控制點 (CCP)</h2>
+    <div class="ccp"><div class="ccp-title">CCP-1: 收貨溫度驗證</div>驗證要求：冷藏品需維持 2-8°C，冷凍品需維持 -25~-15°C</div>
+    <div class="ccp"><div class="ccp-title">CCP-2: 運輸溫度監控</div>監控頻率：每 5 分鐘記錄一次，逸脫累計不得超過 30 分鐘</div>
+    <div class="ccp"><div class="ccp-title">CCP-3: 交接溫度快照</div>每次交接需記錄當下溫度與簽收人</div>
+    </div>
+
+    <div class="section"><h2>矯正措施建議</h2>
+    <ul>
+      ${riskData.filter(r => r.riskScore >= 2).map(r =>
+        `<li><strong>${r.alias}</strong> (${r.batch.batchNo}): ${r.riskFactors.join("; ")} — 建議: ${
+          r.riskScore >= 5 ? "立即隔離批次，啟動銷毀程序" : "加強監控，準備備用冷藏設備"
+        }</li>`
+      ).join("") || "<li>所有批次目前為低風險狀態</li>"}
+    </ul></div>
+
+    <div class="stamp">本報告由 UTFind IoT Dashboard HACCP 模組自動產出 · ${new Date().toLocaleString()}</div>
+    </body></html>`);
+  win.document.close();
+  win.print();
+  addAudit("產出 HACCP 風險報告");
+  addEvent("info", "產出 HACCP 風險評估報告");
+}
+
+async function generateBatchTraceabilityReport() {
+  const mac = document.getElementById("gdp-tag-select").value;
+  if (!mac) { showToast("請選擇 Tag", "warning"); return; }
+
+  const batch = batchBindings[mac];
+  if (!batch) { showToast("此 Tag 尚未綁定批號", "warning"); return; }
+
+  const alias = tagAliases[mac] || mac;
+  const zone = tempZones[mac] || { type: "cold", min: TEMP_MIN, max: TEMP_MAX };
+  const handovers = handoverRecords.filter(h => h.mac === mac);
+  const tag = latestData.find(t => t.mac === mac);
+
+  showToast("正在載入完整溫度歷史...", "info", 3000);
+
+  // 使用現有歷史資料
+  let historyPoints = [];
+  const tagHistory = historyRawData.find(h => h.mac === mac);
+  if (tagHistory && tagHistory.data) {
+    historyPoints = tagHistory.data;
+  }
+
+  // 計算統計
+  const temps = historyPoints.filter(p => p.temperature != null).map(p => p.temperature);
+  const minTemp = temps.length > 0 ? Math.min(...temps) : null;
+  const maxTemp = temps.length > 0 ? Math.max(...temps) : null;
+  const avgTemp = temps.length > 0 ? (temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1) : null;
+
+  const excursionPoints = historyPoints.filter(p =>
+    p.temperature != null && (p.temperature < zone.min || p.temperature > zone.max)
+  );
+
+  const win = window.open("", "_blank");
+  win.document.write(`<!DOCTYPE html><html><head><title>批號追溯報告 - ${batch.batchNo}</title>
+    <style>
+      body{font-family:sans-serif;padding:30px;color:#333;max-width:900px;margin:0 auto;}
+      h1{color:#3b82f6;font-size:20px;text-align:center;}
+      .subtitle{text-align:center;color:#666;font-size:12px;margin-bottom:20px;}
+      table{width:100%;border-collapse:collapse;margin:16px 0;font-size:11px;}
+      th,td{border:1px solid #ddd;padding:6px 8px;text-align:left;}
+      th{background:#f0f2f5;font-weight:600;}
+      .section{margin:20px 0;}
+      .section h2{font-size:14px;color:#333;border-bottom:2px solid #3b82f6;padding-bottom:4px;}
+      .pass{color:#22c55e;font-weight:700;} .fail{color:#ef4444;font-weight:700;}
+      .stamp{text-align:center;margin:30px 0;font-size:11px;color:#999;}
+      @media print{body{padding:10px;}}
+    </style></head><body>
+    <h1>批號全程追溯報告</h1>
+    <p class="subtitle">Batch Traceability Report — 完整溫度歷史與監管鏈</p>
+
+    <div class="section"><h2>批號資訊</h2>
+    <table>
+      <tr><th>批號</th><td>${batch.batchNo}</td><th>綁定 Tag</th><td>${alias} (${mac})</td></tr>
+      <tr><th>綁定時間</th><td>${batch.bindDate ? new Date(batch.bindDate).toLocaleString() : "--"}</td><th>效期</th><td>${batch.expiry || "未設定"}</td></tr>
+      <tr><th>溫層要求</th><td colspan="3">${zone.type === "cold" ? "冷藏" : zone.type === "frozen" ? "冷凍" : "常溫"} (${zone.min}~${zone.max}°C)</td></tr>
+    </table></div>
+
+    <div class="section"><h2>溫度統計</h2>
+    <table>
+      <tr><th>項目</th><th>數值</th><th>合規</th></tr>
+      <tr><td>記錄點數</td><td>${historyPoints.length}</td><td>--</td></tr>
+      <tr><td>最低溫度</td><td>${minTemp ?? "--"}°C</td><td class="${minTemp != null && minTemp >= zone.min ? "pass" : "fail"}">${minTemp != null && minTemp >= zone.min ? "PASS" : "需審查"}</td></tr>
+      <tr><td>最高溫度</td><td>${maxTemp ?? "--"}°C</td><td class="${maxTemp != null && maxTemp <= zone.max ? "pass" : "fail"}">${maxTemp != null && maxTemp <= zone.max ? "PASS" : "需審查"}</td></tr>
+      <tr><td>平均溫度</td><td>${avgTemp ?? "--"}°C</td><td>--</td></tr>
+      <tr><td>逸脫點數</td><td>${excursionPoints.length}</td><td class="${excursionPoints.length === 0 ? "pass" : "fail"}">${excursionPoints.length === 0 ? "PASS" : "需審查"}</td></tr>
+    </table></div>
+
+    <div class="section"><h2>交接紀錄</h2>
+    ${handovers.length > 0 ? `<table><tr><th>#</th><th>時間</th><th>簽收人</th><th>溫度快照</th></tr>
+    ${handovers.map((h, i) => `<tr><td>${i + 1}</td><td>${new Date(h.time).toLocaleString()}</td><td>${h.person}</td><td>${h.tempSnapshot ?? "--"}°C</td></tr>`).join("")}</table>` : "<p>無交接紀錄</p>"}</div>
+
+    <div class="section"><h2>溫度歷史 (最近 50 筆)</h2>
+    ${historyPoints.length > 0 ? `<table><tr><th>時間</th><th>溫度</th><th>位置</th><th>狀態</th></tr>
+    ${historyPoints.slice(0, 50).map(p => {
+      const inRange = p.temperature == null || (p.temperature >= zone.min && p.temperature <= zone.max);
+      return `<tr><td>${new Date(p.lastRequestDate).toLocaleString()}</td><td>${p.temperature ?? "--"}°C</td><td>${p.lastLatitude?.toFixed(4) ?? "--"}, ${p.lastLongitude?.toFixed(4) ?? "--"}</td><td class="${inRange ? "pass" : "fail"}">${inRange ? "正常" : "逸脫"}</td></tr>`;
+    }).join("")}</table>` : "<p>無歷史資料，請先查詢歷史軌跡</p>"}</div>
+
+    <div class="stamp">本報告由 UTFind IoT Dashboard 批次追溯模組自動產出 · ${new Date().toLocaleString()}</div>
+    </body></html>`);
+  win.document.close();
+  win.print();
+  addAudit(`產出批號追溯報告: ${batch.batchNo}`);
+  addEvent("info", `產出 ${alias} 的批號追溯報告`);
 }
 
 // ---------- 溫度逸脫計時器 ----------
@@ -3923,6 +4444,74 @@ function generateCustomerPortal() {
 // ---------- 版本歷程 ----------
 const VERSION_HISTORY = [
   {
+    version: "v4.5.0", type: "minor", title: "多租戶管理介面",
+    changes: [
+      "[新增] 多租戶管理面板 — Super Admin 可管理所有租戶",
+      "[新增] 租戶 CRUD — 建立/檢視/編輯/暫停/刪除租戶",
+      "[新增] 租戶使用者管理 — 邀請/編輯/移除組織內使用者",
+      "[新增] 租戶裝置管理 — 綁定/解綁/檢視裝置狀態",
+      "[新增] 租戶 API 金鑰管理 — 建立/撤銷 API 金鑰",
+      "[新增] 用量統計面板 — 每日 API 呼叫數、裝置配額使用率",
+      "[新增] 平台分析儀表板 — 總租戶數/用戶數/裝置數/API 呼叫量",
+      "[新增] 稽核日誌 — 記錄所有管理操作的完整審計軌跡",
+      "[新增] RBAC 權限系統 — Admin/Operator/User 三層角色",
+      "[新增] 租戶使用者認證 — 獨立登入流程、JWT 驗證",
+      "[新增] tenant_users/permissions/role_permissions/audit_logs 資料表",
+      "[新增] RLS 策略 — 資料庫層級的租戶資料隔離",
+    ],
+  },
+  {
+    version: "v4.4.0", type: "minor", title: "報表排程自動寄送",
+    changes: [
+      "[新增] 報表排程系統 — 自動產生並寄送定期報告",
+      "[新增] 支援五種報表類型 — 溫度逸脫/圍欄事件/任務完成/HACCP合規/批號追溯",
+      "[新增] 排程頻率選項 — 每日/每週/每月可自訂執行時間",
+      "[新增] 資料範圍選項 — 過去24小時/7天/30天/上月",
+      "[新增] 多收件人支援 — 可設定多個Email收件者",
+      "[新增] PDF報告生成 — 自動產生含圖表的PDF報告",
+      "[新增] Email自動寄送 — 使用Resend API發送報告",
+      "[新增] 手動觸發功能 — 可立即執行任意排程",
+      "[新增] 報告預覽 — 建立排程前可預覽報告內容",
+      "[新增] 執行歷史記錄 — 顯示近期報告執行狀態",
+      "[新增] 排程啟停控制 — 可暫停/啟用個別排程",
+      "[新增] 後端排程服務 — 使用node-cron定時檢查執行",
+    ],
+  },
+  {
+    version: "v4.3.0", type: "minor", title: "即時聊天系統",
+    changes: [
+      "[新增] 即時聊天功能 — 團隊成員即時溝通協作",
+      "[新增] 對話類型 — 私訊 / 群組 / 告警三種對話模式",
+      "[新增] 告警轉對話 — 從告警直接建立討論群組",
+      "[新增] 位置分享 — 在對話中分享 Tag 即時位置",
+      "[新增] 未讀計數 — 導航列顯示未讀訊息數量",
+      "[新增] 線上使用者 — 即時顯示團隊成員上線狀態",
+      "[新增] 訊息類型 — 文字/系統/告警/位置四種訊息",
+      "[新增] Supabase Realtime — 支援即時訊息推播（需啟用）",
+      "[新增] 聊天 API — conversations/messages/participants/users",
+      "[新增] 資料庫結構 — chat_users/conversations/messages/conversation_participants",
+    ],
+  },
+  {
+    version: "v4.2.0", type: "minor", title: "Webhook 修復 + 冷鏈強化 + 告警確認 + 任務里程",
+    changes: [
+      "[修復] Webhook 整合 — triggerWebhook() 現在正確觸發 SOS/低電量/溫度/圍欄事件",
+      "[新增] Webhook 發送記錄面板 — 顯示發送狀態、HTTP 回應、錯誤訊息",
+      "[新增] Webhook 成功/失敗 Toast 通知即時回饋",
+      "[新增] HACCP 風險評估報告 — 風險矩陣、CCP 控制點、矯正措施建議",
+      "[新增] 批號全程追溯報告 — 完整溫度歷史、統計分析、交接紀錄",
+      "[新增] 告警確認工作流程 — 確認人、確認時間、備註記錄",
+      "[新增] 告警篩選 — 待處理/已確認/全部 快速切換",
+      "[新增] 告警持久化 — 重新整理頁面後保留告警記錄",
+      "[新增] 任務運單號綁定 — 訂單/運單號欄位關聯追蹤",
+      "[新增] 任務目的地圍欄 — 選擇目的地自動偵測抵達",
+      "[新增] 任務里程追蹤 — 自動累計行駛距離（GPS 計算）",
+      "[新增] 任務抵達通知 — 進入目的地圍欄自動推播告警",
+      "[新增] 任務抵達 Webhook — arrival 事件類型支援",
+      "[新增] 里程詳情查看 — 起點、軌跡點數、總里程、抵達時間",
+    ],
+  },
+  {
     version: "v4.1.0", type: "minor", title: "產業情境 Demo 系統",
     changes: [
       "8 大產業情境一鍵切換（醫院、工地、校園、寵物、租賃、展覽、農業、港口）",
@@ -4106,6 +4695,7 @@ function refreshGroupsPanel() {
   populateGroupCheckboxes();
   renderGroupList();
   populateTaskTagSelect();
+  populateTaskDestinationSelect();
   renderTaskList();
   renderAssetList();
 }
@@ -5437,3 +6027,2632 @@ if (!manualTags.includes("C2:85:85:68:38:CA")) {
 
 // 初始渲染手動 Tag 列表
 renderManualTagList();
+
+// ================================================================
+//  側邊欄區塊折疊功能
+// ================================================================
+(function initCollapsibleSections() {
+  document.querySelectorAll(".report-section").forEach(section => {
+    const title = section.querySelector(".section-title");
+    if (!title) return;
+
+    // 把 section-title 之後的所有內容包在 section-body 裡
+    const body = document.createElement("div");
+    body.className = "section-body";
+    const children = [...section.childNodes].filter(n => n !== title);
+    children.forEach(child => body.appendChild(child));
+    section.appendChild(body);
+
+    // 點標題可折疊/展開
+    title.addEventListener("click", (e) => {
+      // 避免跟已有 onclick 的 section-title 衝突
+      if (e.target.closest("button, input, select, a")) return;
+      section.classList.toggle("collapsed");
+    });
+  });
+})();
+
+// ================================================================
+//  [L1] 尋找 PDA — 透過綁定的 Tag 最後回報位置來定位
+// ================================================================
+// 邏輯：Tag 透過 PDA 的 GPS 回報位置，所以 Tag 的最後座標 = PDA 的最後位置
+
+let _pdaProfiles = JSON.parse(localStorage.getItem("utfind_pda_profiles") || "[]");
+let _pdaMapLayers = [];
+
+// 初始化：渲染已建立的 PDA 列表和搜尋下拉
+(function initFindPda() {
+  renderPdaProfiles();
+  renderPdaSearchSelect();
+})();
+
+// ---------- PDA Tag 選擇框（連線後才有資料） ----------
+function populatePdaTagCheckboxes() {
+  const container = document.getElementById("pda-tag-checkboxes");
+  if (!container || allTags.length === 0) return;
+  container.innerHTML = allTags.map(t => {
+    const alias = tagAliases[t.mac] || "";
+    const label = alias ? `${alias} (${t.mac})` : t.mac;
+    return `<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12px;cursor:pointer;">
+      <input type="checkbox" class="pda-tag-cb" value="${t.mac}" /> ${label}
+    </label>`;
+  }).join("");
+}
+
+// ---------- 儲存 PDA Profile ----------
+function savePdaProfile() {
+  const nameInput = document.getElementById("pda-profile-name");
+  const st = document.getElementById("pda-profile-status");
+  const name = (nameInput.value || "").trim();
+  if (!name) { st.className = "status error"; st.textContent = "請輸入 PDA 名稱"; return; }
+
+  const checkedMacs = [...document.querySelectorAll(".pda-tag-cb:checked")].map(cb => cb.value);
+  if (checkedMacs.length === 0) { st.className = "status error"; st.textContent = "請至少綁定一個 Tag"; return; }
+
+  // 檢查是否已存在同名
+  const existing = _pdaProfiles.findIndex(p => p.name === name);
+  if (existing >= 0) {
+    _pdaProfiles[existing].macs = checkedMacs;
+  } else {
+    _pdaProfiles.push({ id: Date.now().toString(36), name, macs: checkedMacs });
+  }
+  localStorage.setItem("utfind_pda_profiles", JSON.stringify(_pdaProfiles));
+
+  nameInput.value = "";
+  document.querySelectorAll(".pda-tag-cb:checked").forEach(cb => cb.checked = false);
+  st.className = "status success";
+  st.textContent = `已儲存 PDA: ${name}（綁定 ${checkedMacs.length} 個 Tag）`;
+  renderPdaProfiles();
+  renderPdaSearchSelect();
+  showToast(`PDA "${name}" 已建立`, "success");
+}
+
+// ---------- 渲染 PDA 列表 ----------
+function renderPdaProfiles() {
+  const container = document.getElementById("pda-profile-list");
+  if (!container) return;
+  if (_pdaProfiles.length === 0) {
+    container.innerHTML = '<div class="empty-state">尚未建立 PDA 資料</div>';
+    return;
+  }
+  container.innerHTML = _pdaProfiles.map(p => {
+    const tagLabels = p.macs.slice(0, 3).map(m => tagAliases[m] || m.slice(-8));
+    const more = p.macs.length > 3 ? ` +${p.macs.length - 3}` : "";
+    return `<div class="geofence-item">
+      <div style="flex:1;">
+        <strong>${p.name}</strong>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">
+          ${p.macs.length} 個 Tag: ${tagLabels.join(", ")}${more}
+        </div>
+      </div>
+      <button class="btn-ghost-sm" onclick="deletePdaProfile('${p.id}')" title="刪除">刪除</button>
+    </div>`;
+  }).join("");
+}
+
+function deletePdaProfile(id) {
+  _pdaProfiles = _pdaProfiles.filter(p => p.id !== id);
+  localStorage.setItem("utfind_pda_profiles", JSON.stringify(_pdaProfiles));
+  renderPdaProfiles();
+  renderPdaSearchSelect();
+  showToast("已刪除 PDA", "info");
+}
+
+function renderPdaSearchSelect() {
+  const select = document.getElementById("pda-search-target");
+  if (!select) return;
+  if (_pdaProfiles.length === 0) {
+    select.innerHTML = '<option value="">-- 請先建立 PDA --</option>';
+    return;
+  }
+  select.innerHTML = '<option value="">-- 選擇 PDA --</option>' +
+    _pdaProfiles.map(p => `<option value="${p.id}">${p.name} (${p.macs.length} Tags)</option>`).join("");
+}
+
+// ---------- 搜尋 PDA：查綁定 Tag 的最後位置 ----------
+async function searchPda() {
+  const profileId = document.getElementById("pda-search-target").value;
+  const radius = parseInt(document.getElementById("pda-search-radius").value) || 100;
+  const st = document.getElementById("pda-search-status");
+  const resultSection = document.getElementById("pda-result-section");
+  const resultList = document.getElementById("pda-result-list");
+  const summary = document.getElementById("pda-search-summary");
+
+  if (!profileId) { st.className = "status error"; st.textContent = "請先選擇 PDA"; return; }
+  const profile = _pdaProfiles.find(p => p.id === profileId);
+  if (!profile) { st.className = "status error"; st.textContent = "PDA 不存在"; return; }
+
+  st.className = "status info";
+  st.innerHTML = '<span class="spinner"></span>查詢綁定 Tag 的最後位置...';
+  clearPdaSearch();
+
+  try {
+    // 查詢綁定 Tag 的最新位置（用現有的 UTFind API）
+    const result = await apiCall("latest", { macs: profile.macs });
+    const tagData = Array.isArray(result) ? result.filter(t => t.lastLatitude && t.lastLongitude) : [];
+
+    if (tagData.length === 0) {
+      st.className = "status info"; st.textContent = "綁定的 Tag 目前沒有位置資料";
+      resultSection.style.display = "none";
+      return;
+    }
+
+    // 依最後更新時間排序（最新在前）
+    tagData.sort((a, b) => new Date(b.lastRequestDate) - new Date(a.lastRequestDate));
+
+    // 計算所有 Tag 位置的質心 = PDA 最可能的位置
+    const centerLat = tagData.reduce((s, t) => s + t.lastLatitude, 0) / tagData.length;
+    const centerLng = tagData.reduce((s, t) => s + t.lastLongitude, 0) / tagData.length;
+
+    // 找出最近更新的 Tag
+    const newestTag = tagData[0];
+    const newestTime = new Date(newestTag.lastRequestDate);
+    const timeDiff = Date.now() - newestTime.getTime();
+    const isStale = timeDiff > 30 * 60000; // 超過 30 分鐘沒更新
+
+    // 地圖上標記
+    // 1. 搜索範圍（在質心畫圈）
+    const searchCircle = L.circle([centerLat, centerLng], {
+      radius: radius,
+      color: "#ef4444", fillColor: "#ef4444", fillOpacity: 0.12,
+      weight: 2, dashArray: "6,4",
+    }).addTo(map);
+    _pdaMapLayers.push(searchCircle);
+
+    // 2. PDA 推估位置
+    const pdaMarker = L.marker([centerLat, centerLng], { icon: createPdaIcon("lost") })
+      .addTo(map)
+      .bindPopup(`<strong>${profile.name}</strong><br>推估位置（${tagData.length} 個 Tag 質心）<br>搜索半徑: ${radius}m`)
+      .openPopup();
+    _pdaMapLayers.push(pdaMarker);
+
+    // 3. 每個 Tag 的位置
+    tagData.forEach((t, idx) => {
+      const alias = tagAliases[t.mac] || t.mac;
+      const isNewest = idx === 0;
+      const tagMarker = L.circleMarker([t.lastLatitude, t.lastLongitude], {
+        radius: 8,
+        color: isNewest ? "#ef4444" : "#6366f1",
+        fillColor: isNewest ? "#ef4444" : "#6366f1",
+        fillOpacity: isNewest ? 0.9 : 0.5,
+        weight: 2,
+      }).addTo(map).bindPopup(
+        `<strong>${alias}</strong><br>` +
+        `最後更新: ${new Date(t.lastRequestDate).toLocaleString()}<br>` +
+        `電量: ${t.lastBatteryLevel}%<br>` +
+        `${isNewest ? "⚠ 最近回報的 Tag" : ""}`
+      );
+      _pdaMapLayers.push(tagMarker);
+
+      // Tag 到質心的連線
+      const line = L.polyline([[t.lastLatitude, t.lastLongitude], [centerLat, centerLng]], {
+        color: isNewest ? "#ef4444" : "#6366f1", weight: 1, opacity: 0.4, dashArray: "4,4",
+      }).addTo(map);
+      _pdaMapLayers.push(line);
+    });
+
+    map.fitBounds(searchCircle.getBounds(), { padding: [60, 60] });
+
+    // 顯示結果
+    resultSection.style.display = "block";
+    const statusHtml = isStale
+      ? `<span style="color:var(--danger);">已離線 ${Math.round(timeDiff / 60000)} 分鐘，PDA 可能在此區域</span>`
+      : `<span style="color:var(--success);">Tag 仍在線，PDA 可能仍在附近</span>`;
+    summary.innerHTML = `<strong>${profile.name}</strong> — ${tagData.length} 個 Tag 回報位置<br>${statusHtml}`;
+
+    resultList.innerHTML = tagData.map((t, idx) => {
+      const alias = tagAliases[t.mac] || t.mac;
+      const time = new Date(t.lastRequestDate);
+      const ago = getTimeAgo(t.lastRequestDate);
+      const isNewest = idx === 0;
+      const dist = haversine(centerLat, centerLng, t.lastLatitude, t.lastLongitude);
+      const distStr = dist < 1 ? `${Math.round(dist * 1000)}m` : `${dist.toFixed(1)}km`;
+
+      return `<div class="geofence-item" style="cursor:pointer;border-left:3px solid ${isNewest ? "var(--danger)" : "var(--accent)"};padding-left:10px;${isNewest ? "background:rgba(239,68,68,0.1);" : ""}" onclick="map.setView([${t.lastLatitude},${t.lastLongitude}],18)">
+        <div style="flex:1;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <strong style="font-size:12px;">${alias}</strong>
+            ${isNewest ? '<span style="font-size:9px;padding:1px 5px;border-radius:8px;background:var(--danger);color:#fff;">最新</span>' : ""}
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">
+            ${time.toLocaleString()} (${ago})
+          </div>
+          <div style="font-size:10px;color:var(--text-muted);">
+            電量 ${t.lastBatteryLevel}% · 離質心 ${distStr}
+          </div>
+        </div>
+      </div>`;
+    }).join("");
+
+    st.className = "status success";
+    st.textContent = `PDA 推估位置已標記，最近一個 Tag 回報於 ${getTimeAgo(newestTag.lastRequestDate)}`;
+
+  } catch (e) {
+    st.className = "status error"; st.textContent = "搜尋失敗: " + e.message;
+  }
+}
+
+function getTimeAgo(dateStr) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "剛剛";
+  if (mins < 60) return `${mins} 分鐘前`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} 小時前`;
+  return `${Math.floor(hours / 24)} 天前`;
+}
+
+function clearPdaSearch() {
+  _pdaMapLayers.forEach(layer => map.removeLayer(layer));
+  _pdaMapLayers = [];
+}
+
+function createPdaIcon(status) {
+  const color = status === "lost" ? "#ef4444" : "#22c55e";
+  return L.divIcon({
+    className: "custom-marker",
+    html: `<div style="width:32px;height:32px;background:${color};border:3px solid #fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;${status === "lost" ? "animation:pulse 1s infinite;" : ""}">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/></svg>
+    </div>`,
+    iconSize: [32, 32], iconAnchor: [16, 16],
+  });
+}
+
+// 不再需要 deviceAutoCheckin，移除 fetchLatest 的打卡呼叫
+function deviceAutoCheckin() { /* 已停用 */ }
+
+// ================================================================
+//  [L] 即時聊天系統 (Real-time Chat)
+// ================================================================
+
+// Chat state
+let chatCurrentUser = JSON.parse(localStorage.getItem("utfind_chat_user") || "null");
+let chatConversations = [];
+let chatCurrentConversation = null;
+let chatMessages = [];
+let chatUsers = [];
+let chatSubscription = null;
+let chatTabFilter = "all";
+let chatUnreadTotal = 0;
+let chatPollingIntervalId = null; // Store interval ID for cleanup
+
+// Supabase client for realtime (will be initialized dynamically)
+let supabaseClient = null;
+
+// ================================================================
+//  [L1] Chat Initialization
+// ================================================================
+
+async function initChat() {
+  if (!chatCurrentUser) {
+    document.getElementById("chat-user-setup").style.display = "block";
+    document.getElementById("chat-main").style.display = "none";
+    return;
+  }
+
+  document.getElementById("chat-user-setup").style.display = "none";
+  document.getElementById("chat-main").style.display = "block";
+
+  // Load conversations
+  await loadChatConversations();
+
+  // Load online users
+  await loadChatUsers();
+
+  // Setup realtime subscription
+  await subscribeToMessages();
+
+  // Update user status
+  await updateChatUserStatus("online");
+}
+
+async function setupChatUser() {
+  const nameInput = document.getElementById("chat-user-name");
+  const name = (nameInput.value || "").trim();
+
+  if (!name) {
+    showToast("Please enter your name", "error");
+    return;
+  }
+
+  try {
+    const adminToken = localStorage.getItem("utfind_admin_token") || "";
+    const headers = { "Content-Type": "application/json" };
+    if (adminToken) headers["Authorization"] = `Bearer ${adminToken}`;
+    else if (apiKey) headers["X-API-Key"] = apiKey;
+
+    const resp = await fetch("/api/chat/users", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name, email: `${name.toLowerCase().replace(/\s+/g, ".")}@utfind.local` })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error || "Failed to create user");
+    }
+
+    chatCurrentUser = await resp.json();
+    localStorage.setItem("utfind_chat_user", JSON.stringify(chatCurrentUser));
+
+    showToast(`Welcome, ${chatCurrentUser.name}!`, "success");
+    addEvent("chat", `Chat user created: ${chatCurrentUser.name}`);
+
+    initChat();
+  } catch (e) {
+    showToast("Error: " + e.message, "error");
+  }
+}
+
+// ================================================================
+//  [L2] Conversations
+// ================================================================
+
+async function loadChatConversations() {
+  if (!chatCurrentUser) return;
+
+  try {
+    const adminToken = localStorage.getItem("utfind_admin_token") || "";
+    const headers = {};
+    if (adminToken) headers["Authorization"] = `Bearer ${adminToken}`;
+    else if (apiKey) headers["X-API-Key"] = apiKey;
+
+    const resp = await fetch(`/api/chat/conversations?user_id=${chatCurrentUser.id}`, { headers });
+    if (!resp.ok) throw new Error("Failed to load conversations");
+
+    chatConversations = await resp.json();
+    renderChatConversationList();
+    updateChatUnreadBadge();
+  } catch (e) {
+    console.error("loadChatConversations error:", e);
+  }
+}
+
+function renderChatConversationList() {
+  const container = document.getElementById("chat-conversation-list");
+  if (!container) return;
+
+  // Filter by tab
+  let filtered = chatConversations;
+  if (chatTabFilter !== "all") {
+    filtered = chatConversations.filter(c => c.type === chatTabFilter);
+  }
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<div class="empty-state">No conversations</div>';
+    return;
+  }
+
+  container.innerHTML = filtered.map(conv => {
+    const isUnread = conv.unread_count > 0;
+    const lastMsg = conv.last_message;
+    const preview = lastMsg ? (lastMsg.message_type === "system" ? lastMsg.content : `${getInitials(getSenderName(lastMsg, conv))}: ${lastMsg.content}`) : "Start a conversation";
+    const time = lastMsg ? formatChatTime(lastMsg.created_at) : "";
+    const name = getConversationName(conv);
+    const avatarClass = conv.type === "alert" ? "alert" : conv.type === "group" ? "group" : "";
+
+    return `
+      <div class="chat-conv-item ${isUnread ? "unread" : ""}" onclick="openChatConversation('${conv.id}')">
+        <div class="chat-conv-avatar ${avatarClass}">${getConversationIcon(conv)}</div>
+        <div class="chat-conv-info">
+          <div class="chat-conv-name">${escapeHtml(name)}</div>
+          <div class="chat-conv-preview">${escapeHtml(truncate(preview, 40))}</div>
+        </div>
+        <div class="chat-conv-meta">
+          <span class="chat-conv-time">${time}</span>
+          ${isUnread ? `<span class="chat-conv-unread">${conv.unread_count}</span>` : ""}
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function getConversationName(conv) {
+  if (conv.name) return conv.name;
+  if (conv.type === "alert") return `Alert: ${conv.tag_mac || "Unknown"}`;
+  if (conv.type === "direct") {
+    const other = conv.conversation_participants?.find(p => p.user_id !== chatCurrentUser?.id);
+    return other?.chat_users?.name || "Direct Message";
+  }
+  return "Group";
+}
+
+function getConversationIcon(conv) {
+  if (conv.type === "alert") return "!";
+  if (conv.type === "group") return conv.name?.[0]?.toUpperCase() || "G";
+  const other = conv.conversation_participants?.find(p => p.user_id !== chatCurrentUser?.id);
+  return other?.chat_users?.name?.[0]?.toUpperCase() || "?";
+}
+
+function getSenderName(msg, conv) {
+  if (msg.sender_id === chatCurrentUser?.id) return "You";
+  const participant = conv.conversation_participants?.find(p => p.user_id === msg.sender_id);
+  return participant?.chat_users?.name || "Unknown";
+}
+
+function switchChatTab(tab, btn) {
+  chatTabFilter = tab;
+  document.querySelectorAll(".chat-tab").forEach(b => b.classList.remove("active"));
+  if (btn) btn.classList.add("active");
+  renderChatConversationList();
+}
+
+// ================================================================
+//  [L3] Open Conversation & Messages
+// ================================================================
+
+async function openChatConversation(conversationId) {
+  chatCurrentConversation = chatConversations.find(c => c.id === conversationId);
+  if (!chatCurrentConversation) return;
+
+  // Switch views
+  document.getElementById("chat-list-view").style.display = "none";
+  document.getElementById("chat-conversation-view").style.display = "block";
+
+  // Set header
+  document.getElementById("chat-conv-name").textContent = getConversationName(chatCurrentConversation);
+  const participants = chatCurrentConversation.conversation_participants || [];
+  document.getElementById("chat-conv-participants").textContent = `${participants.length} participants`;
+
+  // Load messages
+  await loadChatMessages(conversationId);
+
+  // Mark as read
+  await markChatAsRead(conversationId);
+}
+
+async function loadChatMessages(conversationId) {
+  const container = document.getElementById("chat-messages");
+  if (!container) return;
+
+  container.innerHTML = '<div class="empty-state"><span class="spinner"></span>Loading...</div>';
+
+  try {
+    const adminToken = localStorage.getItem("utfind_admin_token") || "";
+    const headers = {};
+    if (adminToken) headers["Authorization"] = `Bearer ${adminToken}`;
+    else if (apiKey) headers["X-API-Key"] = apiKey;
+
+    const resp = await fetch(`/api/chat/messages?conversation_id=${conversationId}&limit=100`, { headers });
+    if (!resp.ok) throw new Error("Failed to load messages");
+
+    chatMessages = await resp.json();
+    renderChatMessages();
+
+    // Scroll to bottom
+    container.scrollTop = container.scrollHeight;
+  } catch (e) {
+    container.innerHTML = `<div class="empty-state">Error: ${e.message}</div>`;
+  }
+}
+
+function renderChatMessages() {
+  const container = document.getElementById("chat-messages");
+  if (!container) return;
+
+  if (chatMessages.length === 0) {
+    container.innerHTML = '<div class="empty-state">No messages yet. Start the conversation!</div>';
+    return;
+  }
+
+  container.innerHTML = chatMessages.map(msg => {
+    const isOutgoing = msg.sender_id === chatCurrentUser?.id;
+    const sender = msg.chat_users || {};
+    const time = formatChatTime(msg.created_at);
+
+    if (msg.message_type === "system") {
+      return `<div class="chat-msg-system">${escapeHtml(msg.content)}</div>`;
+    }
+
+    if (msg.message_type === "alert") {
+      const meta = msg.metadata || {};
+      return `
+        <div class="chat-msg-alert">
+          <div class="chat-msg-alert-header">
+            <span>Alert</span>
+            <span style="font-weight:400;color:var(--text-muted);font-size:10px;">${time}</span>
+          </div>
+          <div class="chat-msg-alert-body">${escapeHtml(msg.content)}</div>
+          ${meta.tag_mac ? `<div style="font-size:10px;margin-top:4px;color:var(--text-muted);">Tag: ${meta.tag_mac}</div>` : ""}
+        </div>
+      `;
+    }
+
+    if (msg.message_type === "location") {
+      const meta = msg.metadata || {};
+      // Validate coordinates are valid numbers to prevent XSS
+      const lat = typeof meta.lat === "number" && isFinite(meta.lat) ? meta.lat : null;
+      const lng = typeof meta.lng === "number" && isFinite(meta.lng) ? meta.lng : null;
+      const hasValidCoords = lat !== null && lng !== null;
+      const onclickHandler = hasValidCoords ? `focusMapLocation(${lat}, ${lng})` : "";
+      const coordsDisplay = hasValidCoords ? `${lat.toFixed(5)}, ${lng.toFixed(5)}` : "Invalid coordinates";
+
+      return `
+        <div class="chat-message ${isOutgoing ? "outgoing" : ""}">
+          ${!isOutgoing ? `<div class="chat-msg-avatar">${getInitials(sender.name)}</div>` : ""}
+          <div class="chat-msg-content">
+            ${!isOutgoing ? `<div class="chat-msg-sender">${escapeHtml(sender.name || "Unknown")}</div>` : ""}
+            <div class="chat-msg-location" ${hasValidCoords ? `onclick="${onclickHandler}"` : ""}>
+              <div class="chat-msg-location-icon"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg></div>
+              <div class="chat-msg-location-text">${escapeHtml(msg.content)}<br><small>${coordsDisplay}</small></div>
+            </div>
+            <div class="chat-msg-time">${time}</div>
+          </div>
+          ${isOutgoing ? `<div class="chat-msg-avatar">${getInitials(sender.name)}</div>` : ""}
+        </div>
+      `;
+    }
+
+    return `
+      <div class="chat-message ${isOutgoing ? "outgoing" : ""}">
+        ${!isOutgoing ? `<div class="chat-msg-avatar">${getInitials(sender.name)}</div>` : ""}
+        <div class="chat-msg-content">
+          ${!isOutgoing ? `<div class="chat-msg-sender">${escapeHtml(sender.name || "Unknown")}</div>` : ""}
+          <div class="chat-msg-bubble">${escapeHtml(msg.content)}</div>
+          <div class="chat-msg-time">${time}</div>
+        </div>
+        ${isOutgoing ? `<div class="chat-msg-avatar">${getInitials(chatCurrentUser?.name)}</div>` : ""}
+      </div>
+    `;
+  }).join("");
+
+  // Scroll to bottom
+  container.scrollTop = container.scrollHeight;
+}
+
+function closeChatConversation() {
+  chatCurrentConversation = null;
+  chatMessages = [];
+  document.getElementById("chat-list-view").style.display = "block";
+  document.getElementById("chat-conversation-view").style.display = "none";
+
+  // Refresh list
+  loadChatConversations();
+}
+
+// ================================================================
+//  [L4] Send Message
+// ================================================================
+
+async function sendChatMessage() {
+  const input = document.getElementById("chat-input");
+  const content = (input.value || "").trim();
+
+  if (!content || !chatCurrentConversation || !chatCurrentUser) return;
+
+  input.value = "";
+  input.focus();
+
+  try {
+    const adminToken = localStorage.getItem("utfind_admin_token") || "";
+    const headers = { "Content-Type": "application/json" };
+    if (adminToken) headers["Authorization"] = `Bearer ${adminToken}`;
+    else if (apiKey) headers["X-API-Key"] = apiKey;
+
+    const resp = await fetch("/api/chat/messages", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        conversation_id: chatCurrentConversation.id,
+        sender_id: chatCurrentUser.id,
+        content,
+        message_type: "text"
+      })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error || "Failed to send message");
+    }
+
+    const newMsg = await resp.json();
+
+    // Add to local messages and render
+    chatMessages.push(newMsg);
+    renderChatMessages();
+
+    // Play sound
+    if (soundEnabled) {
+      try { new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVoGAACAgICAgICAgICAgICAgICAgICAgICAgICBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYKCgoKCgoKCgoKCgoKCgoKCgoKCgoKDg4ODg4ODg4ODg4ODg4ODg4ODg4OEhISEhISEhISEhISEhISEhISFhYWFhYWFhYWFhYWFhYWFhYWFhoaGhoaGhoaGhoaGhoaGhoaGhoaGh4eHh4eHh4eHh4eHh4eHh4eIiIiIiIiIiIiIiIiIiIiIiIiIiYmJiYmJiYmJiYmJiYmJiYmJioqKioqKioqKioqKioqKioqKi4uLi4uLi4uLi4uLi4uLi4uLjIyMjIyMjIyMjIyMjIyMjIyMjIyNjY2NjY2NjY2NjY2NjY2NjY6Ojo6Ojo6Ojo6Ojo6Ojo6Ojo6Oj4+Pj4+Pj4+Pj4+Pj4+Pj4+PkJCQkJCQkJCQkJCQkJCQkJCQkJGRkZGRkZGRkZGRkZGRkZGRkpKSkpKSkpKSkpKSkpKSkpKSk5OTk5OTk5OTk5OTk5OTk5OTlJSUlJSUlJSUlJSUlJSUlJSUlJWVlZWVlZWVlZWVlZWVlZWVlpaWlpaWlpaWlpaWlpaWlpaWl5eXl5eXl5eXl5eXl5eXl5eXmJiYmJiYmJiYmJiYmJiYmJiYmZmZmZmZmZmZmZmZmZmZmZmZmpqampqampqampqampqampqam5ubm5ubm5ubm5ubm5ubm5ubnJycnJycnJycnJycnJycnJycnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnp6enp6enp6enp6enp6enp6en5+fn5+fn5+fn5+fn5+fn5+foKCgoKCgoKCgoKCgoKCgoKCgoaCgoKCgoKCgoKCgoKCgoKCgoqKioqKioqKioqKioqKioqKio6Ojo6Ojo6Ojo6Ojo6Ojo6OjpKSkpKSkpKSkpKSkpKSkpKSk").play(); } catch {}
+    }
+  } catch (e) {
+    showToast("Error: " + e.message, "error");
+  }
+}
+
+function handleChatKeypress(e) {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendChatMessage();
+  }
+}
+
+// ================================================================
+//  [L5] Mark as Read
+// ================================================================
+
+async function markChatAsRead(conversationId) {
+  if (!chatCurrentUser) return;
+
+  try {
+    const adminToken = localStorage.getItem("utfind_admin_token") || "";
+    const headers = { "Content-Type": "application/json" };
+    if (adminToken) headers["Authorization"] = `Bearer ${adminToken}`;
+    else if (apiKey) headers["X-API-Key"] = apiKey;
+
+    await fetch("/api/chat/messages", {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({
+        conversation_id: conversationId,
+        user_id: chatCurrentUser.id
+      })
+    });
+
+    // Update local unread count
+    const conv = chatConversations.find(c => c.id === conversationId);
+    if (conv) {
+      conv.unread_count = 0;
+      updateChatUnreadBadge();
+    }
+  } catch (e) {
+    console.error("markChatAsRead error:", e);
+  }
+}
+
+function updateChatUnreadBadge() {
+  chatUnreadTotal = chatConversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
+  const badge = document.getElementById("chat-unread-badge");
+  if (badge) {
+    if (chatUnreadTotal > 0) {
+      badge.textContent = chatUnreadTotal > 99 ? "99+" : chatUnreadTotal;
+      badge.style.display = "flex";
+    } else {
+      badge.style.display = "none";
+    }
+  }
+}
+
+// ================================================================
+//  [L6] Realtime Subscription
+// ================================================================
+
+async function subscribeToMessages() {
+  // Note: For full realtime, you need Supabase JS client in browser
+  // This is a polling fallback for server-side API
+  if (!chatCurrentUser) return;
+
+  // Clear any existing polling interval to prevent memory leaks
+  if (chatPollingIntervalId) {
+    clearInterval(chatPollingIntervalId);
+    chatPollingIntervalId = null;
+  }
+
+  // Poll for new messages every 5 seconds
+  chatPollingIntervalId = setInterval(async () => {
+    if (document.hidden) return; // Don't poll when tab is hidden
+
+    const previousUnread = chatUnreadTotal;
+    await loadChatConversations();
+
+    // If in conversation view, reload messages
+    if (chatCurrentConversation) {
+      const latestMsgTime = chatMessages[chatMessages.length - 1]?.created_at;
+      if (latestMsgTime) {
+        try {
+          const adminToken = localStorage.getItem("utfind_admin_token") || "";
+          const headers = {};
+          if (adminToken) headers["Authorization"] = `Bearer ${adminToken}`;
+          else if (apiKey) headers["X-API-Key"] = apiKey;
+
+          const resp = await fetch(`/api/chat/messages?conversation_id=${chatCurrentConversation.id}&after=${latestMsgTime}&limit=50`, { headers });
+          if (resp.ok) {
+            const newMsgs = await resp.json();
+            if (newMsgs.length > 0) {
+              chatMessages.push(...newMsgs);
+              renderChatMessages();
+              markChatAsRead(chatCurrentConversation.id);
+            }
+          }
+        } catch {}
+      }
+    }
+
+    // Notify if new unread
+    if (chatUnreadTotal > previousUnread && soundEnabled) {
+      showToast(`New chat message received`, "info");
+      if (typeof Audio !== "undefined") {
+        try { new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVoGAACAgICAgICAgICAgICAgICAgICAgICAgICBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYKCgoKCgoKCgoKCgoKCgoKCgoKCgoKDg4ODg4ODg4ODg4ODg4ODg4ODg4OEhISEhISEhISEhISEhISEhISFhYWFhYWFhYWFhYWFhYWFhYWFhoaGhoaGhoaGhoaGhoaGhoaGhoaGh4eHh4eHh4eHh4eHh4eHh4eIiIiIiIiIiIiIiIiIiIiIiIiIiYmJiYmJiYmJiYmJiYmJiYmJioqKioqKioqKioqKioqKioqKi4uLi4uLi4uLi4uLi4uLi4uLjIyMjIyMjIyMjIyMjIyMjIyMjIyNjY2NjY2NjY2NjY2NjY2NjY6Ojo6Ojo6Ojo6Ojo6Ojo6Ojo6Oj4+Pj4+Pj4+Pj4+Pj4+Pj4+PkJCQkJCQkJCQkJCQkJCQkJCQkJGRkZGRkZGRkZGRkZGRkZGRkpKSkpKSkpKSkpKSkpKSkpKSk5OTk5OTk5OTk5OTk5OTk5OTlJSUlJSUlJSUlJSUlJSUlJSUlJWVlZWVlZWVlZWVlZWVlZWVlpaWlpaWlpaWlpaWlpaWlpaWl5eXl5eXl5eXl5eXl5eXl5eXmJiYmJiYmJiYmJiYmJiYmJiYmZmZmZmZmZmZmZmZmZmZmZmZmpqampqampqampqampqampqam5ubm5ubm5ubm5ubm5ubm5ubnJycnJycnJycnJycnJycnJycnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnp6enp6enp6enp6enp6enp6en5+fn5+fn5+fn5+fn5+fn5+foKCgoKCgoKCgoKCgoKCgoKCgoaCgoKCgoKCgoKCgoKCgoKCgoqKioqKioqKioqKioqKioqKio6Ojo6Ojo6Ojo6Ojo6Ojo6OjpKSkpKSkpKSkpKSkpKSkpKSk").play(); } catch {}
+      }
+    }
+  }, 5000);
+}
+
+// ================================================================
+//  [L7] Online Users
+// ================================================================
+
+async function loadChatUsers() {
+  try {
+    const adminToken = localStorage.getItem("utfind_admin_token") || "";
+    const headers = {};
+    if (adminToken) headers["Authorization"] = `Bearer ${adminToken}`;
+    else if (apiKey) headers["X-API-Key"] = apiKey;
+
+    const resp = await fetch("/api/chat/users", { headers });
+    if (!resp.ok) throw new Error("Failed to load users");
+
+    chatUsers = await resp.json();
+    renderChatOnlineUsers();
+  } catch (e) {
+    console.error("loadChatUsers error:", e);
+  }
+}
+
+function renderChatOnlineUsers() {
+  const container = document.getElementById("chat-online-users");
+  if (!container) return;
+
+  const onlineUsers = chatUsers.filter(u => u.status === "online" || u.status === "away");
+
+  if (onlineUsers.length === 0) {
+    container.innerHTML = '<div class="empty-state">No users online</div>';
+    return;
+  }
+
+  container.innerHTML = onlineUsers.map(user => `
+    <div class="chat-user-item" onclick="startDirectChat('${user.id}')">
+      <div class="chat-user-avatar">
+        ${getInitials(user.name)}
+        <span class="chat-user-status ${user.status}"></span>
+      </div>
+      <span class="chat-user-name">${escapeHtml(user.name)}</span>
+      <span class="chat-user-role">${user.role}</span>
+    </div>
+  `).join("");
+}
+
+async function updateChatUserStatus(status) {
+  if (!chatCurrentUser) return;
+
+  try {
+    const adminToken = localStorage.getItem("utfind_admin_token") || "";
+    const headers = { "Content-Type": "application/json" };
+    if (adminToken) headers["Authorization"] = `Bearer ${adminToken}`;
+    else if (apiKey) headers["X-API-Key"] = apiKey;
+
+    await fetch("/api/chat/users", {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ user_id: chatCurrentUser.id, status })
+    });
+  } catch {}
+}
+
+// ================================================================
+//  [L8] Create Conversation
+// ================================================================
+
+function openNewChatModal() {
+  // Create modal
+  const overlay = document.createElement("div");
+  overlay.className = "chat-modal-overlay";
+  overlay.id = "chat-new-modal";
+  overlay.onclick = (e) => { if (e.target === overlay) closeNewChatModal(); };
+
+  const otherUsers = chatUsers.filter(u => u.id !== chatCurrentUser?.id);
+
+  overlay.innerHTML = `
+    <div class="chat-modal">
+      <div class="chat-modal-header">
+        <span class="chat-modal-title">New Conversation</span>
+        <button class="chat-modal-close" onclick="closeNewChatModal()">&times;</button>
+      </div>
+      <div class="chat-modal-body">
+        <div class="form-group">
+          <label>Type</label>
+          <select id="new-chat-type" onchange="toggleNewChatName()">
+            <option value="direct">Direct Message</option>
+            <option value="group">Group Chat</option>
+          </select>
+        </div>
+        <div class="form-group" id="new-chat-name-group" style="display:none;">
+          <label>Group Name</label>
+          <input type="text" id="new-chat-name" placeholder="Enter group name" />
+        </div>
+        <div class="form-group">
+          <label>Select Participants</label>
+          <div class="chat-user-select-list" id="chat-user-select-list">
+            ${otherUsers.length === 0 ? '<div class="empty-state">No other users available</div>' : otherUsers.map(u => `
+              <label class="chat-user-select-item">
+                <input type="checkbox" value="${u.id}" />
+                <div class="chat-user-avatar">${getInitials(u.name)}</div>
+                <span>${escapeHtml(u.name)}</span>
+              </label>
+            `).join("")}
+          </div>
+        </div>
+        <button class="btn-accent" onclick="createNewChat()">Create</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+}
+
+function closeNewChatModal() {
+  const modal = document.getElementById("chat-new-modal");
+  if (modal) modal.remove();
+}
+
+function toggleNewChatName() {
+  const type = document.getElementById("new-chat-type").value;
+  document.getElementById("new-chat-name-group").style.display = type === "group" ? "block" : "none";
+}
+
+async function createNewChat() {
+  const type = document.getElementById("new-chat-type").value;
+  const name = document.getElementById("new-chat-name")?.value || "";
+  const checkboxes = document.querySelectorAll("#chat-user-select-list input:checked");
+  const participantIds = Array.from(checkboxes).map(cb => cb.value);
+
+  if (participantIds.length === 0) {
+    showToast("Please select at least one participant", "error");
+    return;
+  }
+
+  if (type === "direct" && participantIds.length > 1) {
+    showToast("Direct message can only have one recipient", "error");
+    return;
+  }
+
+  // Add current user to participants
+  participantIds.push(chatCurrentUser.id);
+
+  try {
+    const adminToken = localStorage.getItem("utfind_admin_token") || "";
+    const headers = { "Content-Type": "application/json" };
+    if (adminToken) headers["Authorization"] = `Bearer ${adminToken}`;
+    else if (apiKey) headers["X-API-Key"] = apiKey;
+
+    const resp = await fetch("/api/chat/conversations", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        type,
+        name: type === "group" ? name : null,
+        created_by: chatCurrentUser.id,
+        participant_ids: participantIds
+      })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error || "Failed to create conversation");
+    }
+
+    const newConv = await resp.json();
+
+    closeNewChatModal();
+    showToast("Conversation created", "success");
+    addEvent("chat", `Created ${type} conversation`);
+
+    // Reload and open
+    await loadChatConversations();
+    openChatConversation(newConv.id);
+  } catch (e) {
+    showToast("Error: " + e.message, "error");
+  }
+}
+
+async function startDirectChat(userId) {
+  // Check if direct conversation exists
+  const existing = chatConversations.find(c =>
+    c.type === "direct" &&
+    c.conversation_participants?.some(p => p.user_id === userId) &&
+    c.conversation_participants?.some(p => p.user_id === chatCurrentUser?.id)
+  );
+
+  if (existing) {
+    openChatConversation(existing.id);
+    return;
+  }
+
+  // Create new direct conversation
+  try {
+    const adminToken = localStorage.getItem("utfind_admin_token") || "";
+    const headers = { "Content-Type": "application/json" };
+    if (adminToken) headers["Authorization"] = `Bearer ${adminToken}`;
+    else if (apiKey) headers["X-API-Key"] = apiKey;
+
+    const resp = await fetch("/api/chat/conversations", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        type: "direct",
+        created_by: chatCurrentUser.id,
+        participant_ids: [chatCurrentUser.id, userId]
+      })
+    });
+
+    if (!resp.ok) throw new Error("Failed to create conversation");
+
+    const newConv = await resp.json();
+    await loadChatConversations();
+    openChatConversation(newConv.id);
+  } catch (e) {
+    showToast("Error: " + e.message, "error");
+  }
+}
+
+// ================================================================
+//  [L9] Alert to Chat Conversion
+// ================================================================
+
+async function createAlertConversation(alertData) {
+  if (!chatCurrentUser) {
+    showToast("Please setup chat user first", "warning");
+    return null;
+  }
+
+  const { alertId, tagMac, alertType, message } = alertData;
+
+  try {
+    const adminToken = localStorage.getItem("utfind_admin_token") || "";
+    const headers = { "Content-Type": "application/json" };
+    if (adminToken) headers["Authorization"] = `Bearer ${adminToken}`;
+    else if (apiKey) headers["X-API-Key"] = apiKey;
+
+    // Get all users to add to alert conversation
+    // Ensure chatUsers is loaded; if empty, at least include current user
+    let userIds = chatUsers.map(u => u.id);
+    if (!userIds.includes(chatCurrentUser.id)) {
+      userIds.push(chatCurrentUser.id);
+    }
+
+    // Warn if no other users to notify (only current user)
+    if (userIds.length <= 1) {
+      console.warn("createAlertConversation: No other chat users to notify. Consider loading users first.");
+      showToast("Warning: No other users to notify about this alert", "warning");
+    }
+
+    const resp = await fetch("/api/chat/conversations", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        type: "alert",
+        name: `Alert: ${alertType} - ${tagMac}`,
+        alert_id: alertId,
+        tag_mac: tagMac,
+        created_by: chatCurrentUser.id,
+        participant_ids: userIds
+      })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error || "Failed to create alert conversation");
+    }
+
+    const conv = await resp.json();
+
+    // Send alert message
+    await fetch("/api/chat/messages", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        conversation_id: conv.id,
+        sender_id: chatCurrentUser.id,
+        content: message || `Alert triggered: ${alertType}`,
+        message_type: "alert",
+        metadata: { alertId, tagMac, alertType }
+      })
+    });
+
+    showToast("Alert conversation created", "success");
+    addEvent("chat", `Alert conversation created for ${tagMac}`);
+
+    await loadChatConversations();
+    return conv.id;
+  } catch (e) {
+    showToast("Error creating alert chat: " + e.message, "error");
+    return null;
+  }
+}
+
+// Share tag location via chat
+async function shareTagLocationInChat(tagData) {
+  if (!chatCurrentConversation || !chatCurrentUser) {
+    showToast("Open a conversation first", "warning");
+    return;
+  }
+
+  const { mac, lat, lng, name } = tagData;
+
+  try {
+    const adminToken = localStorage.getItem("utfind_admin_token") || "";
+    const headers = { "Content-Type": "application/json" };
+    if (adminToken) headers["Authorization"] = `Bearer ${adminToken}`;
+    else if (apiKey) headers["X-API-Key"] = apiKey;
+
+    await fetch("/api/chat/messages", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        conversation_id: chatCurrentConversation.id,
+        sender_id: chatCurrentUser.id,
+        content: `Shared location: ${name || mac}`,
+        message_type: "location",
+        metadata: { mac, lat, lng, name }
+      })
+    });
+
+    showToast("Location shared", "success");
+    await loadChatMessages(chatCurrentConversation.id);
+  } catch (e) {
+    showToast("Error sharing location: " + e.message, "error");
+  }
+}
+
+function focusMapLocation(lat, lng) {
+  if (lat && lng) {
+    map.setView([lat, lng], 16);
+    showToast(`Focused on location: ${lat.toFixed(5)}, ${lng.toFixed(5)}`, "info");
+  }
+}
+
+// ================================================================
+//  [L10] Chat Utilities
+// ================================================================
+
+function getInitials(name) {
+  if (!name) return "?";
+  const parts = name.split(" ");
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return name.substring(0, 2).toUpperCase();
+}
+
+function formatChatTime(dateStr) {
+  if (!dateStr) return "";
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now - date;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return "now";
+  if (diffMins < 60) return `${diffMins}m`;
+  if (diffHours < 24) return `${diffHours}h`;
+  if (diffDays < 7) return `${diffDays}d`;
+
+  return date.toLocaleDateString("zh-TW", { month: "short", day: "numeric" });
+}
+
+function truncate(str, len) {
+  if (!str) return "";
+  return str.length > len ? str.substring(0, len) + "..." : str;
+}
+
+function escapeHtml(str) {
+  if (!str) return "";
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function openChatSettings() {
+  // TODO: Implement chat settings modal
+  showToast("Chat settings coming soon", "info");
+}
+
+// Cleanup function for chat polling interval
+function cleanupChatPolling() {
+  if (chatPollingIntervalId) {
+    clearInterval(chatPollingIntervalId);
+    chatPollingIntervalId = null;
+  }
+}
+
+// Use visibilitychange API for online/offline status (sendBeacon cannot set custom headers)
+document.addEventListener("visibilitychange", () => {
+  if (!chatCurrentUser) return;
+
+  if (document.visibilityState === "hidden") {
+    // User is leaving or switching tabs - set to away
+    updateChatUserStatus("away");
+  } else if (document.visibilityState === "visible") {
+    // User is back - set to online
+    updateChatUserStatus("online");
+  }
+});
+
+// Cleanup polling on page unload
+window.addEventListener("beforeunload", () => {
+  cleanupChatPolling();
+  // Note: Cannot reliably set offline status here since sendBeacon cannot set auth headers
+  // The visibilitychange handler sets "away" status which is sufficient
+});
+
+// Initialize chat when panel is shown
+const originalSwitchPanel = typeof switchPanel === "function" ? switchPanel : null;
+if (originalSwitchPanel) {
+  window.switchPanel = function(panel) {
+    // Cleanup chat polling when leaving chat panel
+    if (panel !== "chat") {
+      cleanupChatPolling();
+    }
+
+    originalSwitchPanel(panel);
+    if (panel === "chat") {
+      initChat();
+    }
+    if (panel === "schedules") {
+      loadSchedules();
+    }
+  };
+}
+
+// ================================================================
+//  [M] 報表排程系統 (Report Scheduling)
+// ================================================================
+
+let schedulesCache = [];
+let schedulePollingTimer = null;
+
+/**
+ * Load all schedules from the API
+ */
+async function loadSchedules() {
+  const listEl = document.getElementById("schedule-list");
+  const execEl = document.getElementById("schedule-executions");
+
+  if (!listEl) return;
+
+  listEl.innerHTML = '<div class="empty-state">Loading schedules...</div>';
+
+  try {
+    const token = localStorage.getItem("utfind_admin_token");
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch("/api/schedules", { headers });
+    if (!res.ok) throw new Error("Failed to load schedules");
+
+    const data = await res.json();
+    schedulesCache = data.schedules || [];
+
+    renderScheduleList();
+    loadScheduleExecutions();
+  } catch (err) {
+    console.error("[Schedules] Load error:", err);
+    listEl.innerHTML = '<div class="empty-state">Failed to load schedules</div>';
+  }
+}
+
+/**
+ * Render the schedule list
+ */
+function renderScheduleList() {
+  const listEl = document.getElementById("schedule-list");
+  if (!listEl) return;
+
+  if (schedulesCache.length === 0) {
+    listEl.innerHTML = '<div class="empty-state">No schedules yet. Create your first schedule!</div>';
+    return;
+  }
+
+  const reportTypeLabels = {
+    temperature_excursion: "Temperature Excursion",
+    geofence_events: "Geofence Events",
+    task_completion: "Task Completion",
+    haccp_compliance: "HACCP Compliance",
+    batch_traceability: "Batch Traceability"
+  };
+
+  const freqLabels = { daily: "Daily", weekly: "Weekly", monthly: "Monthly" };
+
+  listEl.innerHTML = schedulesCache.map(s => {
+    const statusColor = s.enabled ? (s.last_run_status === "success" ? "#10b981" : s.last_run_status === "failed" ? "#ef4444" : "#8b5cf6") : "#6b7280";
+    const nextRun = s.next_run_at ? new Date(s.next_run_at).toLocaleString() : "Not scheduled";
+    const lastRun = s.last_run_at ? new Date(s.last_run_at).toLocaleString() : "Never";
+
+    return `
+      <div class="schedule-item" data-id="${s.id}">
+        <div class="schedule-header">
+          <span class="schedule-status-dot" style="background:${statusColor};"></span>
+          <span class="schedule-name">${escapeHtml(s.name)}</span>
+          <span class="schedule-type-badge">${reportTypeLabels[s.report_type] || s.report_type}</span>
+        </div>
+        <div class="schedule-meta">
+          <span class="freq-badge ${s.frequency}">${freqLabels[s.frequency] || s.frequency}</span>
+          at ${String(s.run_at_hour).padStart(2, '0')}:${String(s.run_at_minute || 0).padStart(2, '0')}
+          ${s.frequency === 'weekly' ? ` (${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][s.day_of_week] || ''})` : ''}
+          ${s.frequency === 'monthly' ? ` (Day ${s.day_of_month})` : ''}
+        </div>
+        <div class="schedule-times">
+          <span>Next: ${nextRun}</span> &bull; <span>Last: ${lastRun}</span>
+        </div>
+        <div class="schedule-actions">
+          <button class="btn-ghost btn-sm" onclick="editSchedule('${s.id}')" title="Edit">Edit</button>
+          <button class="btn-ghost btn-sm" onclick="runScheduleNow('${s.id}')" title="Run Now">Run</button>
+          <button class="btn-ghost btn-sm" onclick="toggleScheduleEnabled('${s.id}', ${!s.enabled})" title="${s.enabled ? 'Disable' : 'Enable'}">${s.enabled ? 'Disable' : 'Enable'}</button>
+          <button class="btn-ghost btn-sm" onclick="deleteSchedule('${s.id}')" title="Delete" style="color:#ef4444;">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+/**
+ * Load recent schedule executions
+ */
+async function loadScheduleExecutions() {
+  const execEl = document.getElementById("schedule-executions");
+  if (!execEl) return;
+
+  try {
+    const token = localStorage.getItem("utfind_admin_token");
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    // Get executions from the past 7 days
+    const res = await fetch("/api/schedules?include_executions=1", { headers });
+    if (!res.ok) return;
+
+    const data = await res.json();
+    const executions = data.executions || [];
+
+    if (executions.length === 0) {
+      execEl.innerHTML = '<div class="empty-state">No recent executions</div>';
+      return;
+    }
+
+    execEl.innerHTML = executions.slice(0, 10).map(e => {
+      const schedule = schedulesCache.find(s => s.id === e.schedule_id);
+      const statusIcon = e.status === "success" ? "✓" : e.status === "failed" ? "✗" : "◌";
+      const statusColor = e.status === "success" ? "#10b981" : e.status === "failed" ? "#ef4444" : "#f59e0b";
+
+      return `
+        <div class="execution-item">
+          <span class="execution-status" style="color:${statusColor};">${statusIcon}</span>
+          <span class="execution-name">${schedule ? escapeHtml(schedule.name) : 'Unknown'}</span>
+          <span class="execution-time">${new Date(e.executed_at).toLocaleString()}</span>
+          ${e.error_message ? `<span class="execution-error" title="${escapeHtml(e.error_message)}">!</span>` : ''}
+        </div>
+      `;
+    }).join("");
+  } catch (err) {
+    console.error("[Schedules] Executions load error:", err);
+  }
+}
+
+/**
+ * Open the schedule modal for create/edit
+ */
+function openScheduleModal(scheduleId = null) {
+  const modal = document.getElementById("schedule-modal");
+  const title = document.getElementById("schedule-modal-title");
+  const form = document.getElementById("schedule-form");
+
+  if (!modal || !form) return;
+
+  form.reset();
+  document.getElementById("schedule-id").value = "";
+
+  if (scheduleId) {
+    // Edit mode
+    const schedule = schedulesCache.find(s => s.id === scheduleId);
+    if (!schedule) return;
+
+    title.textContent = "Edit Schedule";
+    document.getElementById("schedule-id").value = schedule.id;
+    document.getElementById("schedule-name").value = schedule.name || "";
+    document.getElementById("schedule-description").value = schedule.description || "";
+    document.getElementById("schedule-type").value = schedule.report_type || "temperature_excursion";
+    document.getElementById("schedule-frequency").value = schedule.frequency || "daily";
+    document.getElementById("schedule-hour").value = schedule.run_at_hour || 6;
+    document.getElementById("schedule-dow").value = schedule.day_of_week || 1;
+    document.getElementById("schedule-dom").value = schedule.day_of_month || 1;
+    document.getElementById("schedule-range").value = schedule.date_range_type || "last_24h";
+    document.getElementById("schedule-recipients").value = (schedule.recipients || []).join(", ");
+
+    updateScheduleFrequencyOptions();
+  } else {
+    title.textContent = "New Schedule";
+    updateScheduleFrequencyOptions();
+  }
+
+  modal.classList.remove("hidden");
+}
+
+/**
+ * Close the schedule modal
+ */
+function closeScheduleModal() {
+  const modal = document.getElementById("schedule-modal");
+  if (modal) modal.classList.add("hidden");
+}
+
+/**
+ * Edit an existing schedule
+ */
+function editSchedule(scheduleId) {
+  openScheduleModal(scheduleId);
+}
+
+/**
+ * Update visibility of day-of-week and day-of-month based on frequency
+ */
+function updateScheduleFrequencyOptions() {
+  const freq = document.getElementById("schedule-frequency").value;
+  const dowGroup = document.getElementById("schedule-dow-group");
+  const domGroup = document.getElementById("schedule-dom-group");
+
+  if (dowGroup) dowGroup.classList.toggle("hidden", freq !== "weekly");
+  if (domGroup) domGroup.classList.toggle("hidden", freq !== "monthly");
+}
+
+/**
+ * Save schedule (create or update)
+ */
+async function saveSchedule(event) {
+  event.preventDefault();
+
+  const scheduleId = document.getElementById("schedule-id").value;
+  const isEdit = !!scheduleId;
+
+  const name = document.getElementById("schedule-name").value.trim();
+  const description = document.getElementById("schedule-description").value.trim();
+  const report_type = document.getElementById("schedule-type").value;
+  const frequency = document.getElementById("schedule-frequency").value;
+  const run_at_hour = parseInt(document.getElementById("schedule-hour").value);
+  const day_of_week = parseInt(document.getElementById("schedule-dow").value);
+  const day_of_month = parseInt(document.getElementById("schedule-dom").value);
+  const date_range_type = document.getElementById("schedule-range").value;
+  const recipientsRaw = document.getElementById("schedule-recipients").value;
+  const recipients = recipientsRaw.split(",").map(e => e.trim()).filter(e => e);
+
+  if (!name) {
+    showToast("Schedule name is required", "error");
+    return;
+  }
+
+  const payload = {
+    name,
+    description: description || null,
+    report_type,
+    frequency,
+    run_at_hour,
+    run_at_minute: 0,
+    day_of_week: frequency === "weekly" ? day_of_week : null,
+    day_of_month: frequency === "monthly" ? day_of_month : null,
+    date_range_type,
+    recipients,
+    delivery_method: "email"
+  };
+
+  try {
+    const token = localStorage.getItem("utfind_admin_token");
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const url = isEdit ? `/api/schedules/${scheduleId}` : "/api/schedules";
+    const method = isEdit ? "PUT" : "POST";
+
+    const res = await fetch(url, {
+      method,
+      headers,
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || "Failed to save schedule");
+    }
+
+    showToast(isEdit ? "Schedule updated!" : "Schedule created!", "success");
+    closeScheduleModal();
+    loadSchedules();
+  } catch (err) {
+    console.error("[Schedules] Save error:", err);
+    showToast(err.message, "error");
+  }
+}
+
+/**
+ * Toggle schedule enabled/disabled
+ */
+async function toggleScheduleEnabled(scheduleId, enabled) {
+  try {
+    const token = localStorage.getItem("utfind_admin_token");
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`/api/schedules/${scheduleId}`, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ enabled })
+    });
+
+    if (!res.ok) throw new Error("Failed to update schedule");
+
+    showToast(enabled ? "Schedule enabled" : "Schedule disabled", "success");
+    loadSchedules();
+  } catch (err) {
+    console.error("[Schedules] Toggle error:", err);
+    showToast(err.message, "error");
+  }
+}
+
+/**
+ * Delete a schedule
+ */
+async function deleteSchedule(scheduleId) {
+  if (!confirm("Are you sure you want to delete this schedule?")) return;
+
+  try {
+    const token = localStorage.getItem("utfind_admin_token");
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`/api/schedules/${scheduleId}`, {
+      method: "DELETE",
+      headers
+    });
+
+    if (!res.ok) throw new Error("Failed to delete schedule");
+
+    showToast("Schedule deleted", "success");
+    loadSchedules();
+  } catch (err) {
+    console.error("[Schedules] Delete error:", err);
+    showToast(err.message, "error");
+  }
+}
+
+/**
+ * Manually run a schedule now
+ */
+async function runScheduleNow(scheduleId) {
+  try {
+    const token = localStorage.getItem("utfind_admin_token");
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`/api/schedules/${scheduleId}/run`, {
+      method: "POST",
+      headers
+    });
+
+    if (!res.ok) throw new Error("Failed to trigger schedule");
+
+    showToast("Report generation started! You will receive an email when ready.", "success");
+  } catch (err) {
+    console.error("[Schedules] Run error:", err);
+    showToast(err.message, "error");
+  }
+}
+
+/**
+ * Preview report data without saving
+ */
+async function previewScheduleReport() {
+  const report_type = document.getElementById("schedule-type").value;
+  const date_range_type = document.getElementById("schedule-range").value;
+
+  try {
+    const token = localStorage.getItem("utfind_admin_token");
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch("/api/schedules/preview", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ report_type, date_range_type })
+    });
+
+    if (!res.ok) throw new Error("Failed to generate preview");
+
+    const data = await res.json();
+    const preview = data.preview;
+
+    // Display preview in an alert (could be improved with a modal)
+    let msg = `Report Preview\n${"=".repeat(40)}\n`;
+    msg += `Period: ${preview.period?.start || "N/A"} to ${preview.period?.end || "N/A"}\n\n`;
+
+    if (preview.summary) {
+      msg += "Summary:\n";
+      for (const [key, val] of Object.entries(preview.summary)) {
+        msg += `  ${key}: ${val}\n`;
+      }
+    }
+
+    if (preview.sample_data && preview.sample_data.length > 0) {
+      msg += `\nSample Data (${preview.sample_data.length} items):\n`;
+      msg += JSON.stringify(preview.sample_data[0], null, 2).slice(0, 500);
+    }
+
+    alert(msg);
+  } catch (err) {
+    console.error("[Schedules] Preview error:", err);
+    showToast(err.message, "error");
+  }
+}
+
+/**
+ * Initialize schedule polling (refresh list periodically)
+ */
+function initSchedulePolling() {
+  // Refresh schedules every 60 seconds when panel is visible
+  schedulePollingTimer = setInterval(() => {
+    const panel = document.getElementById("panel-schedules");
+    if (panel && !panel.classList.contains("hidden")) {
+      loadSchedules();
+    }
+  }, 60000);
+}
+
+// Start schedule polling on page load
+document.addEventListener("DOMContentLoaded", initSchedulePolling);
+
+// ================================================================
+//  [M] Multi-tenant Admin Panel
+//  Phase 3: Multi-tenant Management Interface
+// ================================================================
+
+let adminPanelState = {
+  currentView: "clients",       // clients | users | analytics | audit
+  selectedClient: null,
+  clientTab: "overview",        // overview | users | devices | keys | usage
+  clients: [],
+  clientUsers: [],
+  clientDevices: [],
+  clientKeys: [],
+  usageData: null,
+  analyticsData: null,
+  auditLogs: []
+};
+
+// ----------------------------------------------------------------
+//  [M1] Admin Panel Initialization
+// ----------------------------------------------------------------
+function initAdminPanel() {
+  const panel = document.getElementById("admin-panel");
+  if (!panel) return;
+
+  // Check if user is super admin
+  const token = localStorage.getItem("utfind_admin_token");
+  if (!token) {
+    panel.innerHTML = '<div class="admin-login-required">Please log in as admin to access this panel.</div>';
+    return;
+  }
+
+  renderAdminPanel();
+  loadClients();
+}
+
+// ----------------------------------------------------------------
+//  [M2] Main Admin Panel Renderer
+// ----------------------------------------------------------------
+function renderAdminPanel() {
+  const panel = document.getElementById("admin-panel");
+  if (!panel) return;
+
+  panel.innerHTML = `
+    <div class="admin-container">
+      <aside class="admin-sidebar">
+        <div class="sidebar-header">
+          <h3>Admin Panel</h3>
+        </div>
+        <nav class="sidebar-nav">
+          <button class="sidebar-item ${adminPanelState.currentView === 'clients' ? 'active' : ''}"
+                  onclick="switchAdminView('clients')">
+            <span class="icon">&#x1F3E2;</span> Clients
+          </button>
+          <button class="sidebar-item ${adminPanelState.currentView === 'analytics' ? 'active' : ''}"
+                  onclick="switchAdminView('analytics')">
+            <span class="icon">&#x1F4CA;</span> Analytics
+          </button>
+          <button class="sidebar-item ${adminPanelState.currentView === 'audit' ? 'active' : ''}"
+                  onclick="switchAdminView('audit')">
+            <span class="icon">&#x1F4CB;</span> Audit Logs
+          </button>
+        </nav>
+      </aside>
+      <main class="admin-main">
+        ${renderAdminContent()}
+      </main>
+    </div>
+  `;
+}
+
+function renderAdminContent() {
+  switch (adminPanelState.currentView) {
+    case "clients":
+      return adminPanelState.selectedClient
+        ? renderClientDetail()
+        : renderClientList();
+    case "analytics":
+      return renderPlatformAnalytics();
+    case "audit":
+      return renderAuditLogs();
+    default:
+      return renderClientList();
+  }
+}
+
+function switchAdminView(view) {
+  adminPanelState.currentView = view;
+  adminPanelState.selectedClient = null;
+  renderAdminPanel();
+
+  // Load data for view
+  switch (view) {
+    case "clients": loadClients(); break;
+    case "analytics": loadPlatformAnalytics(); break;
+    case "audit": loadAuditLogs(); break;
+  }
+}
+
+// ----------------------------------------------------------------
+//  [M3] Client List
+// ----------------------------------------------------------------
+async function loadClients() {
+  try {
+    const token = localStorage.getItem("utfind_admin_token");
+    const resp = await fetch("/api/admin/clients", {
+      headers: { "Authorization": `Bearer ${token}` }
+    });
+    const data = await resp.json();
+
+    if (!resp.ok) throw new Error(data.error || "Failed to load clients");
+
+    adminPanelState.clients = data.clients || data;
+    renderAdminPanel();
+  } catch (err) {
+    showToast(err.message, "error");
+  }
+}
+
+function renderClientList() {
+  const clients = adminPanelState.clients;
+
+  return `
+    <div class="admin-header">
+      <h2>Clients</h2>
+      <div class="header-actions">
+        <input type="text" id="client-search" placeholder="Search clients..."
+               oninput="filterClients(this.value)" class="search-input">
+        <select id="client-tier-filter" onchange="filterClientsByTier(this.value)">
+          <option value="">All Tiers</option>
+          <option value="free">Free</option>
+          <option value="basic">Basic</option>
+          <option value="pro">Pro</option>
+          <option value="enterprise">Enterprise</option>
+        </select>
+        <button class="btn-primary" onclick="showCreateClientModal()">
+          + Create Client
+        </button>
+      </div>
+    </div>
+
+    <div class="admin-table-container">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Company</th>
+            <th>Tier</th>
+            <th>Status</th>
+            <th>Tags</th>
+            <th>Users</th>
+            <th>Created</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${clients.map(c => `
+            <tr onclick="selectClient('${c.id}')" class="clickable-row">
+              <td>
+                <strong>${escapeHtmlAdmin(c.name)}</strong>
+                <div class="text-muted">${escapeHtmlAdmin(c.email)}</div>
+              </td>
+              <td>${escapeHtmlAdmin(c.company || "-")}</td>
+              <td><span class="badge tier-${c.tier}">${c.tier}</span></td>
+              <td><span class="badge status-${c.status}">${c.status}</span></td>
+              <td>${c.client_tags?.[0]?.count || 0} / ${c.max_tags || "N/A"}</td>
+              <td>${c.tenant_users?.[0]?.count || 0}</td>
+              <td>${formatDateAdmin(c.created_at)}</td>
+              <td>
+                <button class="btn-icon" onclick="event.stopPropagation(); editClient('${c.id}')" title="Edit">
+                  &#x270F;&#xFE0F;
+                </button>
+                <button class="btn-icon" onclick="event.stopPropagation(); toggleClientStatus('${c.id}', '${c.status}')"
+                        title="${c.status === 'active' ? 'Suspend' : 'Activate'}">
+                  ${c.status === "active" ? "&#x23F8;&#xFE0F;" : "&#x25B6;&#xFE0F;"}
+                </button>
+              </td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+    ${clients.length === 0 ? '<div class="empty-state">No clients found</div>' : ''}
+  `;
+}
+
+function filterClients(searchTerm) {
+  // Re-render with filtered clients
+  const term = searchTerm.toLowerCase();
+  const filtered = adminPanelState.clients.filter(c =>
+    c.name.toLowerCase().includes(term) ||
+    c.email.toLowerCase().includes(term) ||
+    (c.company && c.company.toLowerCase().includes(term))
+  );
+  // Update display only
+  const tbody = document.querySelector(".admin-table tbody");
+  if (tbody) {
+    tbody.innerHTML = filtered.map(c => `
+      <tr onclick="selectClient('${c.id}')" class="clickable-row">
+        <td>
+          <strong>${escapeHtmlAdmin(c.name)}</strong>
+          <div class="text-muted">${escapeHtmlAdmin(c.email)}</div>
+        </td>
+        <td>${escapeHtmlAdmin(c.company || "-")}</td>
+        <td><span class="badge tier-${c.tier}">${c.tier}</span></td>
+        <td><span class="badge status-${c.status}">${c.status}</span></td>
+        <td>${c.client_tags?.[0]?.count || 0} / ${c.max_tags || "N/A"}</td>
+        <td>${c.tenant_users?.[0]?.count || 0}</td>
+        <td>${formatDateAdmin(c.created_at)}</td>
+        <td>
+          <button class="btn-icon" onclick="event.stopPropagation(); editClient('${c.id}')" title="Edit">&#x270F;&#xFE0F;</button>
+          <button class="btn-icon" onclick="event.stopPropagation(); toggleClientStatus('${c.id}', '${c.status}')"
+                  title="${c.status === 'active' ? 'Suspend' : 'Activate'}">
+            ${c.status === "active" ? "&#x23F8;&#xFE0F;" : "&#x25B6;&#xFE0F;"}
+          </button>
+        </td>
+      </tr>
+    `).join("");
+  }
+}
+
+// ----------------------------------------------------------------
+//  [M4] Client Detail View
+// ----------------------------------------------------------------
+async function selectClient(clientId) {
+  adminPanelState.selectedClient = adminPanelState.clients.find(c => c.id === clientId);
+  adminPanelState.clientTab = "overview";
+  renderAdminPanel();
+
+  // Load client data
+  await Promise.all([
+    loadClientUsers(clientId),
+    loadClientDevices(clientId),
+    loadClientKeys(clientId),
+    loadClientUsage(clientId)
+  ]);
+}
+
+function renderClientDetail() {
+  const client = adminPanelState.selectedClient;
+  if (!client) return renderClientList();
+
+  return `
+    <div class="admin-header">
+      <button class="btn-back" onclick="backToClientList()">&#x2190; Back to Clients</button>
+      <div class="client-header-info">
+        <h2>${escapeHtmlAdmin(client.name)}</h2>
+        <span class="badge status-${client.status}">${client.status}</span>
+        <span class="badge tier-${client.tier}">${client.tier}</span>
+      </div>
+      <button class="btn-secondary" onclick="editClient('${client.id}')">Edit Client</button>
+    </div>
+
+    <div class="client-tabs">
+      <button class="tab-btn ${adminPanelState.clientTab === 'overview' ? 'active' : ''}"
+              onclick="switchClientTab('overview')">Overview</button>
+      <button class="tab-btn ${adminPanelState.clientTab === 'users' ? 'active' : ''}"
+              onclick="switchClientTab('users')">Users</button>
+      <button class="tab-btn ${adminPanelState.clientTab === 'devices' ? 'active' : ''}"
+              onclick="switchClientTab('devices')">Devices</button>
+      <button class="tab-btn ${adminPanelState.clientTab === 'keys' ? 'active' : ''}"
+              onclick="switchClientTab('keys')">API Keys</button>
+      <button class="tab-btn ${adminPanelState.clientTab === 'usage' ? 'active' : ''}"
+              onclick="switchClientTab('usage')">Usage</button>
+    </div>
+
+    <div class="client-tab-content">
+      ${renderClientTabContent()}
+    </div>
+  `;
+}
+
+function renderClientTabContent() {
+  switch (adminPanelState.clientTab) {
+    case "overview": return renderClientOverview();
+    case "users": return renderUserTab();
+    case "devices": return renderDeviceTab();
+    case "keys": return renderKeyTab();
+    case "usage": return renderUsageChart();
+    default: return renderClientOverview();
+  }
+}
+
+function renderClientOverview() {
+  const client = adminPanelState.selectedClient;
+  const users = adminPanelState.clientUsers;
+  const devices = adminPanelState.clientDevices;
+  const keys = adminPanelState.clientKeys;
+
+  return `
+    <div class="overview-grid">
+      <div class="stat-card">
+        <div class="stat-icon">&#x1F465;</div>
+        <div class="stat-content">
+          <div class="stat-value">${users.length}</div>
+          <div class="stat-label">Users</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">&#x1F4E1;</div>
+        <div class="stat-content">
+          <div class="stat-value">${devices.length} / ${client.max_tags || 'N/A'}</div>
+          <div class="stat-label">Devices</div>
+          ${client.max_tags ? `<div class="stat-bar"><div class="stat-bar-fill" style="width: ${Math.min(100, devices.length / client.max_tags * 100)}%"></div></div>` : ''}
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">&#x1F511;</div>
+        <div class="stat-content">
+          <div class="stat-value">${keys.filter(k => k.status === 'active').length} / ${client.max_keys || 'N/A'}</div>
+          <div class="stat-label">API Keys</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">&#x1F4CA;</div>
+        <div class="stat-content">
+          <div class="stat-value">${adminPanelState.usageData?.summary?.api_calls_period || 0}</div>
+          <div class="stat-label">API Calls (30d)</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="client-info-section">
+      <h3>Client Information</h3>
+      <div class="info-grid">
+        <div class="info-item">
+          <label>Email</label>
+          <span>${escapeHtmlAdmin(client.email)}</span>
+        </div>
+        <div class="info-item">
+          <label>Company</label>
+          <span>${escapeHtmlAdmin(client.company || "-")}</span>
+        </div>
+        <div class="info-item">
+          <label>Phone</label>
+          <span>${escapeHtmlAdmin(client.phone || "-")}</span>
+        </div>
+        <div class="info-item">
+          <label>Created</label>
+          <span>${formatDateTimeAdmin(client.created_at)}</span>
+        </div>
+      </div>
+      ${client.notes ? `<div class="info-notes"><label>Notes</label><p>${escapeHtmlAdmin(client.notes)}</p></div>` : ""}
+    </div>
+  `;
+}
+
+// ----------------------------------------------------------------
+//  [M5] User Tab
+// ----------------------------------------------------------------
+async function loadClientUsers(clientId) {
+  try {
+    const token = localStorage.getItem("utfind_admin_token");
+    const resp = await fetch(`/api/admin/clients/${clientId}/users`, {
+      headers: { "Authorization": `Bearer ${token}` }
+    });
+    const data = await resp.json();
+    adminPanelState.clientUsers = Array.isArray(data) ? data : [];
+    if (adminPanelState.clientTab === "users") renderAdminPanel();
+  } catch (err) {
+    console.error("Failed to load users:", err);
+  }
+}
+
+function renderUserTab() {
+  const users = adminPanelState.clientUsers;
+
+  return `
+    <div class="tab-header">
+      <h3>Users (${users.length})</h3>
+      <button class="btn-primary" onclick="showInviteUserModal()">+ Invite User</button>
+    </div>
+
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Role</th>
+          <th>Status</th>
+          <th>Last Login</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${users.map(u => `
+          <tr>
+            <td>${escapeHtmlAdmin(u.name)}</td>
+            <td>${escapeHtmlAdmin(u.email)}</td>
+            <td><span class="badge role-${u.role}">${u.role}</span></td>
+            <td><span class="badge status-${u.status}">${u.status}</span></td>
+            <td>${u.last_login_at ? formatDateTimeAdmin(u.last_login_at) : "Never"}</td>
+            <td>
+              <button class="btn-icon" onclick="editUserAdmin('${u.id}')" title="Edit">&#x270F;&#xFE0F;</button>
+              <button class="btn-icon" onclick="removeUserAdmin('${u.id}')" title="Remove">&#x1F5D1;&#xFE0F;</button>
+            </td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+    ${users.length === 0 ? '<div class="empty-state">No users found</div>' : ''}
+  `;
+}
+
+// ----------------------------------------------------------------
+//  [M6] Device Tab
+// ----------------------------------------------------------------
+async function loadClientDevices(clientId) {
+  try {
+    const token = localStorage.getItem("utfind_admin_token");
+    const resp = await fetch(`/api/admin/clients/${clientId}/devices`, {
+      headers: { "Authorization": `Bearer ${token}` }
+    });
+    const data = await resp.json();
+    adminPanelState.clientDevices = Array.isArray(data) ? data : [];
+    if (adminPanelState.clientTab === "devices") renderAdminPanel();
+  } catch (err) {
+    console.error("Failed to load devices:", err);
+  }
+}
+
+function renderDeviceTab() {
+  const devices = adminPanelState.clientDevices;
+  const client = adminPanelState.selectedClient;
+
+  return `
+    <div class="tab-header">
+      <h3>Devices (${devices.length} / ${client.max_tags || 'N/A'})</h3>
+      <button class="btn-primary" onclick="showBindDeviceModal()">+ Bind Device</button>
+    </div>
+
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>MAC Address</th>
+          <th>Label</th>
+          <th>Status</th>
+          <th>Last Seen</th>
+          <th>Temperature</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${devices.map(d => `
+          <tr>
+            <td><code>${d.mac}</code></td>
+            <td>${escapeHtmlAdmin(d.label || "-")}</td>
+            <td><span class="badge status-${d.status || 'offline'}">${d.status || 'offline'}</span></td>
+            <td>${d.latest_data?.created_at ? formatDateTimeAdmin(d.latest_data.created_at) : "Never"}</td>
+            <td>${d.latest_data?.temperature ? d.latest_data.temperature + " C" : "-"}</td>
+            <td>
+              <button class="btn-icon" onclick="editDeviceAdmin('${d.id}')" title="Edit">&#x270F;&#xFE0F;</button>
+              <button class="btn-icon" onclick="unbindDeviceAdmin('${d.id}')" title="Unbind">&#x1F513;</button>
+            </td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+    ${devices.length === 0 ? '<div class="empty-state">No devices bound</div>' : ''}
+  `;
+}
+
+// ----------------------------------------------------------------
+//  [M7] API Key Tab
+// ----------------------------------------------------------------
+async function loadClientKeys(clientId) {
+  try {
+    const token = localStorage.getItem("utfind_admin_token");
+    const resp = await fetch(`/api/admin/clients/${clientId}/keys`, {
+      headers: { "Authorization": `Bearer ${token}` }
+    });
+    const data = await resp.json();
+    adminPanelState.clientKeys = Array.isArray(data) ? data : [];
+    if (adminPanelState.clientTab === "keys") renderAdminPanel();
+  } catch (err) {
+    console.error("Failed to load keys:", err);
+  }
+}
+
+function renderKeyTab() {
+  const keys = adminPanelState.clientKeys;
+  const client = adminPanelState.selectedClient;
+  const activeKeys = keys.filter(k => k.status === "active");
+
+  return `
+    <div class="tab-header">
+      <h3>API Keys (${activeKeys.length} / ${client.max_keys || 'N/A'})</h3>
+      <button class="btn-primary" onclick="showCreateKeyModal()">+ Create Key</button>
+    </div>
+
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Key</th>
+          <th>Permissions</th>
+          <th>Status</th>
+          <th>Last Used</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${keys.map(k => `
+          <tr>
+            <td>${escapeHtmlAdmin(k.name)}</td>
+            <td><code>${k.key.substring(0, 8)}...${k.key.slice(-4)}</code></td>
+            <td>${(k.permissions || []).join(", ")}</td>
+            <td><span class="badge status-${k.status}">${k.status}</span></td>
+            <td>${k.last_used_at ? formatDateTimeAdmin(k.last_used_at) : "Never"}</td>
+            <td>
+              ${k.status === "active" ? `
+                <button class="btn-icon" onclick="revokeKeyAdmin('${k.id}')" title="Revoke">&#x1F512;</button>
+              ` : ""}
+            </td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+    ${keys.length === 0 ? '<div class="empty-state">No API keys</div>' : ''}
+  `;
+}
+
+// ----------------------------------------------------------------
+//  [M8] Usage Chart
+// ----------------------------------------------------------------
+async function loadClientUsage(clientId) {
+  try {
+    const token = localStorage.getItem("utfind_admin_token");
+    const resp = await fetch(`/api/admin/clients/${clientId}/usage`, {
+      headers: { "Authorization": `Bearer ${token}` }
+    });
+    adminPanelState.usageData = await resp.json();
+    if (adminPanelState.clientTab === "usage") renderAdminPanel();
+  } catch (err) {
+    console.error("Failed to load usage:", err);
+  }
+}
+
+function renderUsageChart() {
+  const usage = adminPanelState.usageData;
+  if (!usage) return '<div class="loading">Loading usage data...</div>';
+
+  const daily = usage.daily_usage || [];
+  const maxCalls = Math.max(...daily.map(d => d.request_count), 1);
+
+  return `
+    <div class="usage-summary">
+      <div class="stat-card">
+        <div class="stat-value">${usage.summary?.api_calls_period || 0}</div>
+        <div class="stat-label">Total API Calls (30d)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${usage.summary?.api_errors_period || 0}</div>
+        <div class="stat-label">Errors</div>
+      </div>
+    </div>
+
+    <div class="usage-chart">
+      <h3>Daily API Usage</h3>
+      <div class="chart-container">
+        ${daily.slice(-30).map(d => `
+          <div class="chart-bar" style="height: ${(d.request_count / maxCalls * 100)}%"
+               title="${d.date}: ${d.request_count} calls">
+          </div>
+        `).join("")}
+      </div>
+      <div class="chart-labels">
+        ${daily.slice(-30).filter((_, i) => i % 7 === 0).map(d => `
+          <span>${d.date.slice(5)}</span>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+// ----------------------------------------------------------------
+//  [M9] Platform Analytics (Super Admin)
+// ----------------------------------------------------------------
+async function loadPlatformAnalytics() {
+  try {
+    const token = localStorage.getItem("utfind_admin_token");
+    const resp = await fetch("/api/admin/analytics/overview", {
+      headers: { "Authorization": `Bearer ${token}` }
+    });
+    adminPanelState.analyticsData = await resp.json();
+    renderAdminPanel();
+  } catch (err) {
+    showToast("Failed to load analytics", "error");
+  }
+}
+
+function renderPlatformAnalytics() {
+  const data = adminPanelState.analyticsData;
+  if (!data) return '<div class="loading">Loading analytics...</div>';
+
+  return `
+    <div class="admin-header">
+      <h2>Platform Analytics</h2>
+      <select onchange="changePeriod(this.value)">
+        <option value="7d">Last 7 days</option>
+        <option value="30d" selected>Last 30 days</option>
+        <option value="90d">Last 90 days</option>
+      </select>
+    </div>
+
+    <div class="overview-grid">
+      <div class="stat-card large">
+        <div class="stat-value">${data.summary?.total_clients || 0}</div>
+        <div class="stat-label">Total Clients</div>
+      </div>
+      <div class="stat-card large">
+        <div class="stat-value">${data.summary?.active_clients || 0}</div>
+        <div class="stat-label">Active Clients</div>
+      </div>
+      <div class="stat-card large">
+        <div class="stat-value">${data.summary?.total_users || 0}</div>
+        <div class="stat-label">Total Users</div>
+      </div>
+      <div class="stat-card large">
+        <div class="stat-value">${data.summary?.total_devices || 0}</div>
+        <div class="stat-label">Total Devices</div>
+      </div>
+    </div>
+
+    <div class="analytics-section">
+      <h3>Tier Distribution</h3>
+      <div class="tier-chart">
+        ${Object.entries(data.tier_distribution || {}).map(([tier, count]) => `
+          <div class="tier-bar">
+            <span class="tier-label">${tier}</span>
+            <div class="tier-bar-container">
+              <div class="tier-bar-fill tier-${tier}"
+                   style="width: ${data.summary?.total_clients ? count / data.summary.total_clients * 100 : 0}%"></div>
+            </div>
+            <span class="tier-count">${count}</span>
+          </div>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+// ----------------------------------------------------------------
+//  [M10] Audit Logs
+// ----------------------------------------------------------------
+async function loadAuditLogs() {
+  try {
+    const token = localStorage.getItem("utfind_admin_token");
+    const resp = await fetch("/api/admin/analytics/audit-logs?limit=100", {
+      headers: { "Authorization": `Bearer ${token}` }
+    });
+    adminPanelState.auditLogs = await resp.json();
+    renderAdminPanel();
+  } catch (err) {
+    showToast("Failed to load audit logs", "error");
+  }
+}
+
+function renderAuditLogs() {
+  const logs = adminPanelState.auditLogs || [];
+
+  return `
+    <div class="admin-header">
+      <h2>Audit Logs</h2>
+      <div class="header-actions">
+        <select id="audit-resource-filter" onchange="filterAuditLogs()">
+          <option value="">All Resources</option>
+          <option value="clients">Clients</option>
+          <option value="tenant_users">Users</option>
+          <option value="client_tags">Devices</option>
+          <option value="api_keys">API Keys</option>
+        </select>
+        <select id="audit-action-filter" onchange="filterAuditLogs()">
+          <option value="">All Actions</option>
+          <option value="create">Create</option>
+          <option value="update">Update</option>
+          <option value="delete">Delete</option>
+          <option value="login">Login</option>
+        </select>
+      </div>
+    </div>
+
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Actor</th>
+          <th>Action</th>
+          <th>Resource</th>
+          <th>Details</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${logs.map(log => `
+          <tr>
+            <td>${formatDateTimeAdmin(log.created_at)}</td>
+            <td>
+              <span class="badge">${log.actor_type}</span>
+              ${escapeHtmlAdmin(log.actor_email || log.actor_id?.slice(0, 8) || "System")}
+            </td>
+            <td><span class="badge action-${log.action}">${log.action}</span></td>
+            <td>${log.resource}</td>
+            <td>
+              <button class="btn-icon" onclick="showAuditDetail('${log.id}')" title="View Details">
+                &#x1F50D;
+              </button>
+            </td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+    ${logs.length === 0 ? '<div class="empty-state">No audit logs found</div>' : ''}
+  `;
+}
+
+// ----------------------------------------------------------------
+//  [M11] Modal Helpers
+// ----------------------------------------------------------------
+function showCreateClientModal() {
+  showAdminModal("Create Client", `
+    <form id="create-client-form" onsubmit="createClient(event)">
+      <div class="form-group">
+        <label>Name *</label>
+        <input type="text" name="name" required>
+      </div>
+      <div class="form-group">
+        <label>Email *</label>
+        <input type="email" name="email" required>
+      </div>
+      <div class="form-group">
+        <label>Company</label>
+        <input type="text" name="company">
+      </div>
+      <div class="form-group">
+        <label>Phone</label>
+        <input type="text" name="phone">
+      </div>
+      <div class="form-group">
+        <label>Tier</label>
+        <select name="tier">
+          <option value="free">Free</option>
+          <option value="basic">Basic</option>
+          <option value="pro">Pro</option>
+          <option value="enterprise">Enterprise</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea name="notes"></textarea>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn-secondary" onclick="closeAdminModal()">Cancel</button>
+        <button type="submit" class="btn-primary">Create</button>
+      </div>
+    </form>
+  `);
+}
+
+async function createClient(event) {
+  event.preventDefault();
+  const form = event.target;
+  const data = Object.fromEntries(new FormData(form));
+
+  try {
+    const token = localStorage.getItem("utfind_admin_token");
+    const resp = await fetch("/api/admin/clients", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(data)
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error || "Failed to create client");
+    }
+
+    closeAdminModal();
+    showToast("Client created successfully", "success");
+    loadClients();
+  } catch (err) {
+    showToast(err.message, "error");
+  }
+}
+
+function showInviteUserModal() {
+  showAdminModal("Invite User", `
+    <form id="invite-user-form" onsubmit="inviteUser(event)">
+      <div class="form-group">
+        <label>Email *</label>
+        <input type="email" name="email" required>
+      </div>
+      <div class="form-group">
+        <label>Name *</label>
+        <input type="text" name="name" required>
+      </div>
+      <div class="form-group">
+        <label>Role</label>
+        <select name="role">
+          <option value="user">User (View only)</option>
+          <option value="operator">Operator (Manage devices)</option>
+          <option value="admin">Admin (Full access)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Password (optional)</label>
+        <input type="password" name="password" placeholder="Leave blank to send invite">
+      </div>
+      <p class="form-hint">If password is left blank, an invitation email will be sent.</p>
+      <div class="form-actions">
+        <button type="button" class="btn-secondary" onclick="closeAdminModal()">Cancel</button>
+        <button type="submit" class="btn-primary">Create User</button>
+      </div>
+    </form>
+  `);
+}
+
+async function inviteUser(event) {
+  event.preventDefault();
+  const form = event.target;
+  const data = Object.fromEntries(new FormData(form));
+  const clientId = adminPanelState.selectedClient?.id;
+
+  if (!clientId) {
+    showToast("No client selected", "error");
+    return;
+  }
+
+  try {
+    const token = localStorage.getItem("utfind_admin_token");
+    // Note: Creating user via admin API would require a separate endpoint
+    // For now, we use the tenant API pattern
+    showToast("User invitation feature coming soon", "info");
+    closeAdminModal();
+  } catch (err) {
+    showToast(err.message, "error");
+  }
+}
+
+function showBindDeviceModal() {
+  showAdminModal("Bind Device", `
+    <form id="bind-device-form" onsubmit="bindDevice(event)">
+      <div class="form-group">
+        <label>MAC Address *</label>
+        <input type="text" name="mac" placeholder="AA:BB:CC:DD:EE:FF" required
+               pattern="([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}">
+      </div>
+      <div class="form-group">
+        <label>Label</label>
+        <input type="text" name="label" placeholder="e.g., Cold Truck 007">
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn-secondary" onclick="closeAdminModal()">Cancel</button>
+        <button type="submit" class="btn-primary">Bind Device</button>
+      </div>
+    </form>
+  `);
+}
+
+async function bindDevice(event) {
+  event.preventDefault();
+  showToast("Device binding feature coming soon", "info");
+  closeAdminModal();
+}
+
+function showAdminModal(title, content) {
+  // Create modal overlay
+  const overlay = document.createElement("div");
+  overlay.id = "admin-modal-overlay";
+  overlay.className = "modal-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) closeAdminModal(); };
+
+  overlay.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>${title}</h3>
+        <button class="modal-close" onclick="closeAdminModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        ${content}
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+}
+
+function closeAdminModal() {
+  const overlay = document.getElementById("admin-modal-overlay");
+  if (overlay) overlay.remove();
+}
+
+async function editClient(clientId) {
+  const client = adminPanelState.clients.find(c => c.id === clientId);
+  if (!client) return;
+
+  showAdminModal("Edit Client", `
+    <form id="edit-client-form" onsubmit="saveClient(event, '${clientId}')">
+      <div class="form-group">
+        <label>Name *</label>
+        <input type="text" name="name" value="${escapeHtmlAdmin(client.name)}" required>
+      </div>
+      <div class="form-group">
+        <label>Email *</label>
+        <input type="email" name="email" value="${escapeHtmlAdmin(client.email)}" required>
+      </div>
+      <div class="form-group">
+        <label>Company</label>
+        <input type="text" name="company" value="${escapeHtmlAdmin(client.company || '')}">
+      </div>
+      <div class="form-group">
+        <label>Phone</label>
+        <input type="text" name="phone" value="${escapeHtmlAdmin(client.phone || '')}">
+      </div>
+      <div class="form-group">
+        <label>Tier</label>
+        <select name="tier">
+          <option value="free" ${client.tier === 'free' ? 'selected' : ''}>Free</option>
+          <option value="basic" ${client.tier === 'basic' ? 'selected' : ''}>Basic</option>
+          <option value="pro" ${client.tier === 'pro' ? 'selected' : ''}>Pro</option>
+          <option value="enterprise" ${client.tier === 'enterprise' ? 'selected' : ''}>Enterprise</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Status</label>
+        <select name="status">
+          <option value="active" ${client.status === 'active' ? 'selected' : ''}>Active</option>
+          <option value="suspended" ${client.status === 'suspended' ? 'selected' : ''}>Suspended</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea name="notes">${escapeHtmlAdmin(client.notes || '')}</textarea>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn-secondary" onclick="closeAdminModal()">Cancel</button>
+        <button type="submit" class="btn-primary">Save</button>
+      </div>
+    </form>
+  `);
+}
+
+async function saveClient(event, clientId) {
+  event.preventDefault();
+  const form = event.target;
+  const data = Object.fromEntries(new FormData(form));
+
+  try {
+    const token = localStorage.getItem("utfind_admin_token");
+    const resp = await fetch(`/api/admin/clients/${clientId}`, {
+      method: "PUT",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(data)
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error || "Failed to update client");
+    }
+
+    closeAdminModal();
+    showToast("Client updated successfully", "success");
+    loadClients();
+  } catch (err) {
+    showToast(err.message, "error");
+  }
+}
+
+async function toggleClientStatus(clientId, currentStatus) {
+  const newStatus = currentStatus === "active" ? "suspended" : "active";
+  const action = newStatus === "suspended" ? "suspend" : "activate";
+
+  if (!confirm(`Are you sure you want to ${action} this client?`)) return;
+
+  try {
+    const token = localStorage.getItem("utfind_admin_token");
+    const resp = await fetch(`/api/admin/clients/${clientId}`, {
+      method: "PUT",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ status: newStatus })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error || "Failed to update client status");
+    }
+
+    showToast(`Client ${action}d successfully`, "success");
+    loadClients();
+  } catch (err) {
+    showToast(err.message, "error");
+  }
+}
+
+// ----------------------------------------------------------------
+//  [M12] Utility Functions for Admin Panel
+// ----------------------------------------------------------------
+function escapeHtmlAdmin(str) {
+  if (!str) return "";
+  return String(str).replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+function formatDateAdmin(dateStr) {
+  if (!dateStr) return "-";
+  return new Date(dateStr).toLocaleDateString();
+}
+
+function formatDateTimeAdmin(dateStr) {
+  if (!dateStr) return "-";
+  return new Date(dateStr).toLocaleString();
+}
+
+function backToClientList() {
+  adminPanelState.selectedClient = null;
+  renderAdminPanel();
+}
+
+function switchClientTab(tab) {
+  adminPanelState.clientTab = tab;
+  renderAdminPanel();
+}
+
+// Initialize admin panel when switching to admin view
+function switchToAdminPanel() {
+  switchPanel("admin");
+  initAdminPanel();
+}
+
+// Export functions for global access
+window.initAdminPanel = initAdminPanel;
+window.switchAdminView = switchAdminView;
+window.loadClients = loadClients;
+window.selectClient = selectClient;
+window.backToClientList = backToClientList;
+window.switchClientTab = switchClientTab;
+window.showCreateClientModal = showCreateClientModal;
+window.createClient = createClient;
+window.editClient = editClient;
+window.saveClient = saveClient;
+window.toggleClientStatus = toggleClientStatus;
+window.showInviteUserModal = showInviteUserModal;
+window.inviteUser = inviteUser;
+window.showBindDeviceModal = showBindDeviceModal;
+window.bindDevice = bindDevice;
+window.closeAdminModal = closeAdminModal;
+window.filterClients = filterClients;
+window.loadPlatformAnalytics = loadPlatformAnalytics;
+window.loadAuditLogs = loadAuditLogs;
