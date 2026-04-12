@@ -6,7 +6,7 @@
 
 const express = require("express");
 const router = express.Router();
-const { supabase } = require("../../lib/supabase");
+const { supabase, getUserScopedClient } = require("../../lib/supabase");
 const { json, error } = require("../../lib/auth");
 const { requireTenantAuth, hasPermission } = require("../../lib/auth-middleware");
 
@@ -28,6 +28,7 @@ router.get("/", async (req, res) => {
     .toISOString().split("T")[0];
 
   try {
+    const db = getUserScopedClient(req);
     const [
       { count: devicesCount },
       { count: usersCount },
@@ -35,22 +36,22 @@ router.get("/", async (req, res) => {
       { data: dailyUsage },
       { data: client }
     ] = await Promise.all([
-      supabase.from("client_tags")
+      db.from("client_tags")
         .select("*", { count: "exact", head: true })
         .eq("client_id", user.client_id),
-      supabase.from("tenant_users")
+      db.from("tenant_users")
         .select("*", { count: "exact", head: true })
         .eq("client_id", user.client_id),
-      supabase.from("api_keys")
+      db.from("api_keys")
         .select("*", { count: "exact", head: true })
         .eq("client_id", user.client_id)
         .eq("status", "active"),
-      supabase.from("usage_daily")
+      db.from("usage_daily")
         .select("date, request_count, error_count")
         .eq("client_id", user.client_id)
         .gte("date", since)
         .order("date", { ascending: true }),
-      supabase.from("clients")
+      db.from("clients")
         .select("max_tags, max_keys, tier")
         .eq("id", user.client_id)
         .single()
@@ -106,7 +107,8 @@ router.get("/export", async (req, res) => {
     .toISOString().split("T")[0];
 
   try {
-    const { data: dailyUsage } = await supabase
+    const db = getUserScopedClient(req);
+    const { data: dailyUsage } = await db
       .from("usage_daily")
       .select("date, request_count, error_count, avg_response_ms")
       .eq("client_id", user.client_id)

@@ -7,7 +7,7 @@
 const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcryptjs");
-const { supabase } = require("../../lib/supabase");
+const { supabase, getUserScopedClient } = require("../../lib/supabase");
 const { signToken, json, error } = require("../../lib/auth");
 const { requireTenantAuth, logAudit, getClientIP } = require("../../lib/auth-middleware");
 
@@ -137,7 +137,8 @@ router.get("/me", async (req, res) => {
   if (!user) return;
 
   try {
-    const { data: fullUser } = await supabase
+    const db = getUserScopedClient(req);
+    const { data: fullUser } = await db
       .from("tenant_users")
       .select("id, email, name, role, status, phone, avatar_url, last_login_at, login_count, clients(id, name, company, tier, industry)")
       .eq("id", user.id)
@@ -151,11 +152,11 @@ router.get("/me", async (req, res) => {
 
     // Get permissions + industry defaults in parallel
     const [{ data: permissions }, { data: industryDefaults }] = await Promise.all([
-      supabase
+      db
         .from("role_permissions")
         .select("permissions(code)")
         .eq("role", user.role),
-      supabase
+      db
         .from("industry_defaults")
         .select("display_name, features, report_templates, default_primary_color, default_logo_url, temp_min, temp_max, humidity_min, humidity_max")
         .eq("industry", industry)

@@ -8,7 +8,7 @@ const express = require("express");
 const router = express.Router();
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
-const { supabase } = require("../../lib/supabase");
+const { supabase, getUserScopedClient } = require("../../lib/supabase");
 const { json, error } = require("../../lib/auth");
 const { requireTenantAuth, hasPermission, logAudit, getClientIP } = require("../../lib/auth-middleware");
 const { canRead, filterFields, filterFieldsAll } = require("../../lib/field-visibility");
@@ -29,7 +29,8 @@ router.get("/", async (req, res) => {
   }
 
   try {
-    const { data: users, error: dbErr } = await supabase
+    const db = getUserScopedClient(req);
+    const { data: users, error: dbErr } = await db
       .from("tenant_users")
       .select("id, email, name, role, status, phone, last_login_at, login_count, created_at")
       .eq("client_id", user.client_id)
@@ -57,7 +58,8 @@ router.get("/:id", async (req, res) => {
   const { id } = req.params;
 
   try {
-    const { data: targetUser, error: dbErr } = await supabase
+    const db = getUserScopedClient(req);
+    const { data: targetUser, error: dbErr } = await db
       .from("tenant_users")
       .select("id, email, name, role, status, phone, avatar_url, last_login_at, login_count, created_at")
       .eq("id", id)

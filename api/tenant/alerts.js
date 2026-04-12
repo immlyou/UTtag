@@ -10,7 +10,7 @@
 
 const express = require("express");
 const router = express.Router();
-const { supabase } = require("../../lib/supabase");
+const { supabase, getUserScopedClient } = require("../../lib/supabase");
 const { json, error } = require("../../lib/auth");
 const { requireTenantAuth } = require("../../lib/auth-middleware");
 
@@ -23,8 +23,9 @@ router.get("/", async (req, res) => {
   if (!user) return;
 
   try {
+    const db = getUserScopedClient(req);
     // 1. My tags
-    const { data: tags, error: tagErr } = await supabase
+    const { data: tags, error: tagErr } = await db
       .from("client_tags")
       .select("mac, label")
       .eq("client_id", user.client_id);
@@ -39,17 +40,17 @@ router.get("/", async (req, res) => {
 
     // 2. Per-tag bindings + industry defaults (parallel)
     const [bindingsRes, defaultsRes, readingsRes] = await Promise.all([
-      supabase
+      db
         .from("sensor_bindings")
         .select("mac, sensor_type, min_threshold, max_threshold, enabled")
         .in("mac", macs)
         .eq("enabled", true),
-      supabase
+      db
         .from("industry_defaults")
         .select("temp_min, temp_max, humidity_min, humidity_max")
         .eq("industry", user.industry || "generic")
         .single(),
-      supabase
+      db
         .from("sensor_data")
         .select("mac, temperature, humidity, created_at")
         .in("mac", macs)

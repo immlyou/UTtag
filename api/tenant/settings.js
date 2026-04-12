@@ -8,7 +8,7 @@
 
 const express = require("express");
 const router = express.Router();
-const { supabase } = require("../../lib/supabase");
+const { supabase, getUserScopedClient } = require("../../lib/supabase");
 const { json, error } = require("../../lib/auth");
 const { requireTenantAuth, logAudit, getClientIP } = require("../../lib/auth-middleware");
 
@@ -25,7 +25,8 @@ router.get("/", async (req, res) => {
   const user = await requireTenantAuth(req, res);
   if (!user) return;
   try {
-    const { data, error: dbErr } = await supabase
+    const db = getUserScopedClient(req);
+    const { data, error: dbErr } = await db
       .from("tenant_settings")
       .select("*")
       .eq("client_id", user.client_id)
