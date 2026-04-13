@@ -54,7 +54,7 @@
 <body>
   <main>
     <h1>Admin 代入 Tenant 視角</h1>
-    <p class="sub">作為 superadmin 直接以任一 tenant 使用者身份打開 <code>/tenant.html</code>。<br/>發出的 token 15 分鐘後自動過期；整個動作會寫入 <code>audit_logs</code>。</p>
+    <p class="sub">作為 superadmin 直接以任一 tenant 使用者身份打開主介面 <code>/</code>。<br/>發出的 token 15 分鐘後自動過期；整個動作會寫入 <code>audit_logs</code>。</p>
 
     <!-- Step 1: admin login (skipped if already logged in) -->
     <section id="step-login" class="step">
@@ -197,7 +197,7 @@
     async function prepareGo() {
       show("go");
       clearErr($("go-err"));
-      $("go-info").innerHTML = "將以 <strong>" + esc(state.tenantUser.email) + "</strong>（" + esc(state.client.name) + "）身份開啟 tenant.html。<br/>你的 admin token 保持不變，tenant token 僅 15 分鐘有效。";
+      $("go-info").innerHTML = "將以 <strong>" + esc(state.tenantUser.email) + "</strong>（" + esc(state.client.name) + "）身份開啟主介面。<br/>你的 admin token 保持不變，tenant token 僅 15 分鐘有效。";
       try {
         var r = await fetch("/api/admin/impersonate", {
           method: "POST",
@@ -219,9 +219,11 @@
       if (!state.tenantToken) return;
       localStorage.setItem("tenant_token", state.tenantToken);
       localStorage.setItem("tenant_user", JSON.stringify(state.tenantUser));
-      // Clear any cached industry context so tenant.html fetches fresh.
+      // Clear any cached industry context so the main UI fetches fresh.
       localStorage.removeItem("uttag_industry_ctx");
-      window.location.href = "/tenant.html";
+      // Preserve the admin's own session by stashing it under a second key;
+      // admin-auth-bridge will also see utfind_admin_token and can distinguish.
+      window.location.href = "/";
     });
 
     $("btn-back-clients").addEventListener("click", loadClients);

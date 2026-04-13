@@ -293,9 +293,9 @@
           localStorage.setItem("tenant_token", body.token);
           localStorage.setItem("tenant_user", JSON.stringify(body.user));
 
-          // Route to tenant dashboard (scoped to this account's data).
-          var industry = (body.user && body.user.industry) ? body.user.industry : "generic";
-          window.location.href = "/tenant.html?industry=" + encodeURIComponent(industry);
+          // Land on the full UI; the fetch interceptor in
+          // js/app-auth-bridge.js will scope this tenant's reads.
+          window.location.href = "/";
 
         } catch (err) {
           showError("網路錯誤，請確認連線後再試。");
