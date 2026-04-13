@@ -37,19 +37,24 @@
   function currentAdminToken()  { return readToken("utfind_admin_token"); }
   function currentTenantToken() { return readToken("tenant_token"); }
 
-  // --- Redirect tenant-only sessions away from the admin page ---
-  var path = location.pathname;
-  var isAdminPage = path === "/" || path === "/index.html";
+  // NOTE: previously this bridge redirected tenant-only sessions to
+  // /tenant.html (a simplified dashboard). That was removed on user
+  // request — tenants land on the full /index.html UI. The fetch
+  // interceptor below still routes their tokens correctly so their
+  // own data shows through. /tenant.html remains available but is no
+  // longer the default destination.
 
-  if (isAdminPage && !currentAdminToken() && currentTenantToken()) {
-    var ref = document.referrer || "";
-    if (ref.indexOf("/tenant.html") === -1) {
-      window.location.replace("/tenant.html");
-      return;
+  // --- Fetch interceptor: URL-based token routing ---
+  function isImpersonationToken(tok) {
+    if (!tok) return false;
+    try {
+      var payload = JSON.parse(atob(tok.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+      return !!(payload && payload.impersonated_by);
+    } catch (_) {
+      return false;
     }
   }
 
-  // --- Fetch interceptor: URL-based token routing ---
   function pickTokenForUrl(url) {
     var admin  = currentAdminToken();
     var tenant = currentTenantToken();
@@ -60,10 +65,13 @@
     if (/^\/api\/auth\//.test(url))    return null;           // login has no auth yet
 
     // Legacy endpoints in /api/* (clients, sensors, b2b, keys, usage, schedules, chat):
-    // Phase 5 M2 made these dual-mode. Prefer admin because superadmins are the
-    // historical callers; fall back to tenant (useful for impersonation + future
-    // tenant-driven paths).
-    if (/^\/api\//.test(url)) return admin || tenant || null;
+    // Phase 5 M2 made these dual-mode. Default: prefer admin. BUT if the tenant
+    // token is an impersonation (superadmin viewing a tenant's perspective),
+    // the intent is to SEE the tenant's data, so prefer the tenant token.
+    if (/^\/api\//.test(url)) {
+      if (tenant && isImpersonationToken(tenant)) return tenant;
+      return admin || tenant || null;
+    }
 
     return null;
   }
