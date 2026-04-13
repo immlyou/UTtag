@@ -132,7 +132,12 @@
     var t = getToken();
     if (!t) return false;
     try {
-      var p = JSON.parse(atob(t.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+      var b64 = t.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+      while (b64.length % 4) b64 += "=";
+      var bin = atob(b64);
+      var bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      var p = JSON.parse(new TextDecoder("utf-8").decode(bytes));
       return Boolean(p && p.impersonated_by);
     } catch (_) {
       return false;
