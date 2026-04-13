@@ -40,16 +40,19 @@
   var inTenantMode = Boolean(tenantTok);  // tenant login OR impersonation both count
 
   // --- Step 1: paint body class immediately (before app.js measures) ---
+  function applyBodyClasses() {
+    document.body.classList.add("tenant-mode");
+    if (isImpersonation) document.body.classList.add("impersonation-mode");
+    // Role-specific class so CSS can target tenant-admin-only vs. operator vs. user.
+    var role = tenantPayload && tenantPayload.role;
+    if (role) document.body.classList.add("tenant-role-" + role);
+  }
+
   if (inTenantMode) {
     if (document.body) {
-      document.body.classList.add("tenant-mode");
-      if (isImpersonation) document.body.classList.add("impersonation-mode");
+      applyBodyClasses();
     } else {
-      // <head> scripts: defer to body ready
-      document.addEventListener("DOMContentLoaded", function () {
-        document.body.classList.add("tenant-mode");
-        if (isImpersonation) document.body.classList.add("impersonation-mode");
-      });
+      document.addEventListener("DOMContentLoaded", applyBodyClasses);
     }
   }
 
@@ -152,13 +155,79 @@
     });
   }
 
+  // --- Step 4: dynamic admin-only tagger ---------------------------
+  // app.js renders many buttons at runtime (e.g. "解除綁定" on tag detail
+  // rows). Since we can't edit app.js, watch the DOM and add .admin-only
+  // to any matched button as it appears. Narrow list — only actions we
+  // are SURE a tenant should not invoke.
+  var DYNAMIC_ADMIN_BUTTON_TEXTS = [
+    "解除綁定",
+    "撤銷綁定",
+    "Revoke",
+    "Unbind",
+  ];
+  // Actions limited to tenant admins (role=admin). Regular tenant users
+  // (operator / user) should not see these.
+  var DYNAMIC_TENANT_ADMIN_ONLY_TEXTS = [
+    "新增成員",
+    "新增使用者",
+    "編輯使用者",
+    "邀請成員",
+    "Invite",
+  ];
+
+  function tagButton(btn) {
+    if (!btn || btn.__uttagScanned) return;
+    btn.__uttagScanned = true;
+    var text = (btn.textContent || "").trim();
+    if (!text) return;
+    for (var i = 0; i < DYNAMIC_ADMIN_BUTTON_TEXTS.length; i++) {
+      if (text.indexOf(DYNAMIC_ADMIN_BUTTON_TEXTS[i]) !== -1) {
+        btn.classList.add("admin-only");
+        return;
+      }
+    }
+    for (var j = 0; j < DYNAMIC_TENANT_ADMIN_ONLY_TEXTS.length; j++) {
+      if (text.indexOf(DYNAMIC_TENANT_ADMIN_ONLY_TEXTS[j]) !== -1) {
+        btn.classList.add("tenant-admin-only");
+        return;
+      }
+    }
+  }
+
+  function scanAll(root) {
+    var list = (root || document).querySelectorAll("button, a.btn, [role='button']");
+    for (var i = 0; i < list.length; i++) tagButton(list[i]);
+  }
+
+  function startDynamicTagger() {
+    scanAll(document);
+    try {
+      var mo = new MutationObserver(function (mutations) {
+        for (var i = 0; i < mutations.length; i++) {
+          var m = mutations[i];
+          for (var j = 0; j < m.addedNodes.length; j++) {
+            var n = m.addedNodes[j];
+            if (n && n.nodeType === 1) {
+              if (n.matches && n.matches("button, a.btn, [role='button']")) tagButton(n);
+              if (n.querySelectorAll) scanAll(n);
+            }
+          }
+        }
+      });
+      mo.observe(document.body, { childList: true, subtree: true });
+    } catch (_) { /* graceful */ }
+  }
+
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", function () {
       renderBanner();
       checkEmptyState();
+      startDynamicTagger();
     });
   } else {
     renderBanner();
     checkEmptyState();
+    startDynamicTagger();
   }
 })(window);

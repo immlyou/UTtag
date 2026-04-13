@@ -3255,6 +3255,11 @@ body.tenant-mode { padding-top: 36px; }
 body.tenant-mode .admin-only,
 body.tenant-mode [data-admin-only] { display: none !important; }
 
+/* Tenant-admin-only: visible to tenant whose JWT role === "admin",
+   hidden from operator / user roles. No effect on superadmin sessions. */
+body.tenant-mode:not(.tenant-role-admin) .tenant-admin-only,
+body.tenant-mode:not(.tenant-role-admin) [data-tenant-admin-only] { display: none !important; }
+
 .uttag-banner {
   position: fixed;
   top: 0; left: 0; right: 0;
