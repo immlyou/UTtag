@@ -3242,3 +3242,94 @@ button { cursor: pointer; border: none; font-weight: 600; transition: all 0.2s; 
     justify-content: flex-start;
   }
 }
+
+/* ============================================================
+ * Tenant-mode overlay (js/tenant-mode-overlay.js)
+ * Rendered when the user is logged in as a tenant (or an admin
+ * is impersonating a tenant). Does NOT affect pure admin sessions.
+ * ============================================================ */
+body.tenant-mode { padding-top: 36px; }
+
+/* Hide admin-only elements for tenant + impersonation sessions.
+   Tag elements with class="admin-only" or data-admin-only to opt in. */
+body.tenant-mode .admin-only,
+body.tenant-mode [data-admin-only] { display: none !important; }
+
+.uttag-banner {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 36px;
+  z-index: 10000;
+  background: #0f172a;
+  color: #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  font: 13px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  box-shadow: 0 2px 6px rgba(0,0,0,.15);
+}
+.uttag-banner.impersonation {
+  background: #fde68a;
+  color: #78350f;
+  border-bottom: 1px solid #f59e0b;
+}
+.uttag-banner-left,
+.uttag-banner-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.uttag-banner-client { font-weight: 600; }
+.uttag-banner-user { opacity: .85; }
+.uttag-banner-sep { opacity: .4; }
+.uttag-banner-badge {
+  background: rgba(255,255,255,.15);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+}
+.uttag-banner.impersonation .uttag-banner-badge {
+  background: rgba(180,83,9,.18);
+}
+.uttag-banner-warning { font-weight: 600; }
+.uttag-banner-btn {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,.45);
+  color: inherit;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.uttag-banner.impersonation .uttag-banner-btn {
+  border-color: rgba(180,83,9,.45);
+  background: #b45309;
+  color: #fff;
+}
+.uttag-banner-btn:hover { filter: brightness(1.1); }
+
+/* First-time empty-state hint for tenants with zero bound tags. */
+.uttag-empty-hint {
+  position: fixed;
+  top: 56px;            /* sits below the tenant banner */
+  right: 16px;
+  z-index: 9999;
+  max-width: 320px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-left: 4px solid #0066cc;
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(0,0,0,.08);
+  padding: 14px 16px;
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  color: #111827;
+}
+.uttag-empty-title { font-weight: 600; margin-bottom: 4px; }
+.uttag-empty-body  { color: #4b5563; margin-bottom: 10px; }
+.uttag-empty-hint .uttag-banner-btn {
+  border-color: #d1d5db;
+  color: #374151;
+  background: transparent;
+}
