@@ -48,7 +48,12 @@
   function isImpersonationToken(tok) {
     if (!tok) return false;
     try {
-      var payload = JSON.parse(atob(tok.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+      var b64 = tok.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+      while (b64.length % 4) b64 += "=";
+      var bin = atob(b64);
+      var bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      var payload = JSON.parse(new TextDecoder("utf-8").decode(bytes));
       return !!(payload && payload.impersonated_by);
     } catch (_) {
       return false;

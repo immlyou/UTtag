@@ -29,7 +29,13 @@
   function getTokenPayload(tok) {
     if (!tok) return null;
     try {
-      return JSON.parse(atob(tok.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+      var b64 = tok.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+      while (b64.length % 4) b64 += "=";
+      var bin = atob(b64);
+      // Decode as UTF-8 so Chinese client_name / name survives the roundtrip.
+      var bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return JSON.parse(new TextDecoder("utf-8").decode(bytes));
     } catch (_) { return null; }
   }
 
