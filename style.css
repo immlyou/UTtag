@@ -2383,8 +2383,7 @@ button { cursor: pointer; border: none; font-weight: 600; transition: all 0.2s; 
 .modal-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.35);
   z-index: 0;
 }
 
