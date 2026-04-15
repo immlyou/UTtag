@@ -131,8 +131,64 @@
 
       /* 面板標題強調 */
       .panel-header h2::before { color: ${t.primaryColor}; }
+
+      /* 左上 Logo 改 MOMO 風格 */
+      .nav-logo {
+        background: linear-gradient(135deg,#fff,#fce7ef) !important;
+        color: ${t.primaryColor} !important;
+        font-weight: 900 !important;
+        letter-spacing: 0.5px !important;
+        font-size: 13px !important;
+        box-shadow: 0 2px 10px rgba(255,255,255,.35), inset 0 0 0 1px rgba(255,255,255,.4) !important;
+        border-radius: 10px !important;
+      }
+
+      /* KPI 數字 粉紅光暈 */
+      .kpi-value {
+        color: #fff !important;
+        text-shadow: 0 0 8px rgba(224,30,90,.55), 0 0 18px rgba(224,30,90,.35) !important;
+        font-weight: 800 !important;
+      }
+      .kpi-blue .kpi-value,
+      .kpi-red .kpi-value,
+      .kpi-amber .kpi-value,
+      .kpi-purple .kpi-value,
+      .kpi-cyan .kpi-value {
+        color: ${t.primaryColor} !important;
+      }
+
+      /* Toast 加 MOMO 品牌條 + 粉紅左邊框 */
+      .toast {
+        border-left: 4px solid ${t.primaryColor} !important;
+        background: linear-gradient(90deg, rgba(224,30,90,.08) 0%, var(--bg-card,#fff) 40%) !important;
+        box-shadow: 0 10px 30px rgba(224,30,90,.18) !important;
+      }
+      .toast::before {
+        content: "MOMO";
+        position: absolute;
+        top: -8px;
+        left: 14px;
+        background: ${t.primaryColor};
+        color: #fff;
+        font-size: 9px;
+        font-weight: 800;
+        padding: 2px 6px;
+        border-radius: 4px;
+        letter-spacing: 0.4px;
+      }
+      .toast { position: relative !important; }
+
+      /* Spinner 粉紅 */
+      .spinner {
+        border-color: rgba(224,30,90,.15) !important;
+        border-top-color: ${t.primaryColor} !important;
+      }
     `;
     document.head.appendChild(s);
+
+    // 替換 logo 文字
+    const logo = document.querySelector(".nav-logo");
+    if (logo && logo.textContent.trim() === "UT") logo.textContent = "MO";
   }
 
   function renameKPIs(map) {
