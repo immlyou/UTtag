@@ -70,7 +70,8 @@
         "background:" + t.bannerBg,
         "color:#fff","padding:6px 14px","text-align:center",
         "font:13px/1.4 system-ui,-apple-system,sans-serif","font-weight:600",
-        "letter-spacing:.3px","box-shadow:0 2px 6px rgba(0,0,0,.15)"
+        "letter-spacing:.3px","box-shadow:0 2px 6px rgba(0,0,0,.15)",
+        "height:28px","line-height:16px"
       ].join(";");
       bar.innerHTML =
         '<span style="background:rgba(255,255,255,.22);padding:2px 8px;border-radius:10px;font-size:11px;margin-right:10px;">' + t.short + '</span>' +
@@ -78,14 +79,22 @@
         ' <a href="?demo=off" style="color:#fff;opacity:.7;margin-left:12px;font-size:11px;text-decoration:underline;">切回原版</a>';
       document.body.appendChild(bar);
 
-      // 把 body 往下推，避免 banner 蓋住內容
+      // 把 body 與 sidebar/tenant banner 往下讓位
       const offset = 28;
+      document.documentElement.style.setProperty("--demo-banner-offset", offset + "px");
       document.body.style.paddingTop = offset + "px";
-      // 手動把已經 fixed 到頂部的其他 bar 往下推
-      const existingBanners = document.querySelectorAll("#uttag-tenant-banner");
-      existingBanners.forEach(b => {
-        b.style.top = offset + "px";
-      });
+      // sidebar 固定在 top:0，需要往下推
+      const rail = document.getElementById("nav-rail");
+      if (rail) { rail.style.top = offset + "px"; rail.style.height = "calc(100vh - " + offset + "px)"; }
+      // 右上 tenant 徽章
+      const tbar = document.getElementById("uttag-tenant-banner");
+      if (tbar) tbar.style.top = offset + "px";
+      // 其他 top:0 的 fixed 元素也挪一下
+      setTimeout(() => {
+        document.querySelectorAll("#uttag-tenant-banner, .uttag-banner").forEach(b => {
+          if (getComputedStyle(b).top === "0px") b.style.top = offset + "px";
+        });
+      }, 100);
     }
 
     // 3. KPI 文字改名
