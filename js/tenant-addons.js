@@ -113,7 +113,123 @@
       '</div>';
 
     const chartHtml = drawUsageChart(daily);
-    container.innerHTML = summaryHtml + chartHtml;
+    const roiHtml = renderROICalculator();
+    container.innerHTML = summaryHtml + chartHtml + roiHtml;
+    wireROI();
+  }
+
+  // ─────────── ROI 試算器 ───────────
+  function renderROICalculator() {
+    return `
+      <div class="roi-card" style="margin-top:24px;background:linear-gradient(135deg,rgba(224,30,90,.06),rgba(168,85,247,.04));border:1px solid var(--border,#e5e7eb);border-radius:10px;padding:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div>
+            <div style="font-size:14px;font-weight:700;">💰 採用本系統你可以省多少？</div>
+            <div style="font-size:11px;color:var(--text-muted,#6b7280);margin-top:2px;">輸入貴司實際數字，立刻看到年度 ROI</div>
+          </div>
+          <button id="roi-reset" class="btn-ghost" style="font-size:11px;padding:4px 10px;">預設值</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
+          ${roiField("roi-pallets", "每月出貨棧板", "4000", "個")}
+          ${roiField("roi-value", "平均每棧板貨值", "8000", "元")}
+          ${roiField("roi-loss", "目前遺失率", "0.4", "%")}
+          ${roiField("roi-delay", "目前延遲率", "3.5", "%")}
+          ${roiField("roi-spoil", "冷鏈損壞率", "0.8", "%")}
+          ${roiField("roi-saved-loss", "導入後遺失率", "0.05", "%")}
+          ${roiField("roi-saved-delay", "導入後延遲率", "1.2", "%")}
+          ${roiField("roi-saved-spoil", "導入後損壞率", "0.1", "%")}
+        </div>
+        <div id="roi-result" style="margin-top:14px;padding:14px;background:var(--card-bg,#fff);border-radius:8px;border:1px dashed var(--accent,#e01e5a);">
+          計算中…
+        </div>
+      </div>
+    `;
+  }
+
+  function roiField(id, label, value, unit) {
+    return `
+      <div>
+        <div style="font-size:11px;color:var(--text-muted,#6b7280);margin-bottom:3px;">${label}</div>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <input id="${id}" type="number" value="${value}" step="any" style="flex:1;padding:6px 8px;border:1px solid var(--border,#e5e7eb);border-radius:5px;font:inherit;font-size:13px;background:var(--card-bg,#fff);color:var(--text,#111);" />
+          <span style="font-size:11px;color:var(--text-muted,#6b7280);">${unit}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  function computeROI() {
+    const num = id => parseFloat(document.getElementById(id)?.value || 0) || 0;
+    const pallets = num("roi-pallets");
+    const val = num("roi-value");
+    const lossNow = num("roi-loss") / 100;
+    const lossAfter = num("roi-saved-loss") / 100;
+    const delayNow = num("roi-delay") / 100;
+    const delayAfter = num("roi-saved-delay") / 100;
+    const spoilNow = num("roi-spoil") / 100;
+    const spoilAfter = num("roi-saved-spoil") / 100;
+
+    const monthly = pallets * val;
+    const delayCost = 200; // 每筆延遲罰款/人力額外成本概估
+    const lossSaving = monthly * (lossNow - lossAfter);
+    const delaySaving = pallets * delayCost * (delayNow - delayAfter);
+    const spoilSaving = monthly * (spoilNow - spoilAfter);
+    const totalMonthly = Math.max(0, lossSaving + delaySaving + spoilSaving);
+    const yearly = totalMonthly * 12;
+
+    const fmt = n => "NT$ " + Math.round(n).toLocaleString();
+    const pct = (before, after) => before > 0 ? Math.round(((before - after) / before) * 100) : 0;
+
+    return {
+      html: `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;">
+          <div>
+            <div style="font-size:11px;color:var(--text-muted,#6b7280);">遺失減少</div>
+            <div style="font-size:18px;font-weight:700;color:var(--accent,#e01e5a);">${fmt(lossSaving * 12)}<span style="font-size:11px;font-weight:400;color:var(--text-muted);">/年</span></div>
+            <div style="font-size:10px;color:var(--text-muted);">↓ ${pct(lossNow, lossAfter)}%</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text-muted,#6b7280);">延遲減少</div>
+            <div style="font-size:18px;font-weight:700;color:var(--accent,#e01e5a);">${fmt(delaySaving * 12)}<span style="font-size:11px;font-weight:400;color:var(--text-muted);">/年</span></div>
+            <div style="font-size:10px;color:var(--text-muted);">↓ ${pct(delayNow, delayAfter)}%</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text-muted,#6b7280);">冷鏈損壞減少</div>
+            <div style="font-size:18px;font-weight:700;color:var(--accent,#e01e5a);">${fmt(spoilSaving * 12)}<span style="font-size:11px;font-weight:400;color:var(--text-muted);">/年</span></div>
+            <div style="font-size:10px;color:var(--text-muted);">↓ ${pct(spoilNow, spoilAfter)}%</div>
+          </div>
+        </div>
+        <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--border,#e5e7eb);display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+          <div>
+            <div style="font-size:11px;color:var(--text-muted,#6b7280);">年度總節省</div>
+            <div style="font-size:28px;font-weight:900;background:linear-gradient(90deg,#e01e5a,#a855f7);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;">${fmt(yearly)}</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:11px;color:var(--text-muted,#6b7280);">每月 ≈</div>
+            <div style="font-size:16px;font-weight:700;">${fmt(totalMonthly)}</div>
+          </div>
+        </div>
+      `,
+    };
+  }
+
+  function wireROI() {
+    const ids = ["roi-pallets","roi-value","roi-loss","roi-delay","roi-spoil","roi-saved-loss","roi-saved-delay","roi-saved-spoil"];
+    const update = () => {
+      const r = computeROI();
+      const el = document.getElementById("roi-result");
+      if (el) el.innerHTML = r.html;
+    };
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener("input", update);
+    });
+    document.getElementById("roi-reset")?.addEventListener("click", () => {
+      const defaults = { "roi-pallets":"4000","roi-value":"8000","roi-loss":"0.4","roi-delay":"3.5","roi-spoil":"0.8","roi-saved-loss":"0.05","roi-saved-delay":"1.2","roi-saved-spoil":"0.1" };
+      Object.entries(defaults).forEach(([id,v]) => { const el = document.getElementById(id); if (el) el.value = v; });
+      update();
+    });
+    update();
   }
 
   function drawUsageChart(daily) {
