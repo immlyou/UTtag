@@ -81,8 +81,9 @@ const PLAN_LIMITS = {
   Professional: { rateLimit: 1, maxTags: 500 },
   Enterprise:   { rateLimit: null, maxTags: null },
 };
-const AUTO_REFRESH_INTERVAL = 30; // 每 30 秒自動刷新（API 冷卻已解除）
-const API_COOLDOWN = 2000; // 2 秒緩衝（避免瞬間大量請求）
+const AUTO_REFRESH_INTERVAL = 30; // 每 30 秒自動刷新
+// UTTEC 上游限制：每次請求間隔 5 秒。必須 >= 5s 否則連續呼叫（例如 /all → /latest）會被 429 擋下。
+const API_COOLDOWN = 6000;
 let lastApiCallTime = 0; // 上次 API 呼叫的時間戳
 const TEMP_MIN = 2;
 const TEMP_MAX = 8;
@@ -755,6 +756,11 @@ async function fetchLatest() {
     }
   } catch (err) {
     console.error("fetchLatest error:", err);
+    const status = document.getElementById("key-status");
+    if (status) {
+      status.className = "status error";
+      status.textContent = `取得位置失敗：${err.message}（將於下次自動刷新時重試）`;
+    }
   }
 }
 
@@ -830,8 +836,8 @@ function checkAlerts() {
       pushAlert("🔋", `${alias} 電量不足 (${tag.lastBatteryLevel}%)`, "warning");
       triggerWebhook("lowbat", { mac: tag.mac, alias, battery: tag.lastBatteryLevel });
     }
-    // 溫度警示
-    if (tag.temperature != null && (tag.temperature < TEMP_MIN || tag.temperature > TEMP_MAX) && !lastNotifiedTemp.has(tag.mac)) {
+    // 溫度警示（假資料不觸發，避免 200 個 Tag 產生大量假告警）
+    if (tag.sensorSource !== "demo" && tag.temperature != null && (tag.temperature < TEMP_MIN || tag.temperature > TEMP_MAX) && !lastNotifiedTemp.has(tag.mac)) {
       lastNotifiedTemp.add(tag.mac);
       const dir = tag.temperature < TEMP_MIN ? "過低" : "過高";
       pushAlert("🌡️", `${alias} 溫度${dir}！(${tag.temperature}°C，範圍 ${TEMP_MIN}~${TEMP_MAX}°C)`, "danger");
@@ -1383,12 +1389,42 @@ function populateHistoryCheckboxes() {
   container.innerHTML = allTags.map((t, i) => {
     const alias = tagAliases[t.mac] ? ` (${tagAliases[t.mac]})` : "";
     const color = TRACK_COLORS[i % TRACK_COLORS.length];
-    return `<label class="mac-checkbox-item">
+    const searchKey = (t.mac + " " + (tagAliases[t.mac] || "")).toLowerCase();
+    return `<label class="mac-checkbox-item" data-search="${searchKey}">
       <input type="checkbox" value="${t.mac}" ${i === 0 ? "checked" : ""} />
       <span class="mac-color-dot" style="background:${color};"></span>
       ${t.mac}${alias}
     </label>`;
   }).join("");
+  filterHistoryTags();
+}
+
+function filterHistoryTags() {
+  const input = document.getElementById("history-tag-search");
+  const q = (input?.value || "").trim().toLowerCase();
+  const items = document.querySelectorAll("#history-mac-checkboxes .mac-checkbox-item");
+  let visible = 0;
+  items.forEach(el => {
+    const hit = !q || (el.dataset.search || "").includes(q);
+    el.style.display = hit ? "" : "none";
+    if (hit) visible++;
+  });
+  const countEl = document.getElementById("history-tag-count");
+  if (countEl) {
+    const total = items.length;
+    countEl.textContent = q
+      ? `顯示 ${visible} / ${total} 個 Tag`
+      : `共 ${total} 個 Tag`;
+  }
+}
+
+function toggleAllHistoryTags(checked) {
+  // 只對目前「可見」的項目套用（搭配搜尋使用：輸入關鍵字 → 全選 = 全選符合條件的）
+  document.querySelectorAll("#history-mac-checkboxes .mac-checkbox-item").forEach(el => {
+    if (el.style.display === "none") return;
+    const cb = el.querySelector("input[type=checkbox]");
+    if (cb) cb.checked = checked;
+  });
 }
 
 function getSelectedMacs() {
@@ -3297,6 +3333,87 @@ function loadWebhookConfig() {
   renderWebhookLog();
 }
 
+// ---------- Webhook 測試台 ----------
+function _samplePayload(eventType) {
+  const sampleMac = (allTags[0] && allTags[0].mac) || "C2:85:85:68:38:CA";
+  const alias = tagAliases[sampleMac] || "示範裝置";
+  const samples = {
+    sos:      { mac: sampleMac, alias, status: "sos", lat: 25.0330, lng: 121.5654 },
+    lowbat:   { mac: sampleMac, alias, battery: 12 },
+    temp:     { mac: sampleMac, alias, temperature: 12.5, min: 2, max: 8 },
+    geofence: { mac: sampleMac, alias, geofenceName: "台北倉庫", geofenceId: "demo-1", lat: 25.0330, lng: 121.5654 },
+    arrival:  { mac: sampleMac, alias, taskName: "示範任務", geofenceName: "台北榮總" },
+    ping:     { mac: sampleMac, alias, message: "連通測試" },
+  };
+  return samples[eventType] || samples.ping;
+}
+
+async function testWebhook() {
+  const url = (document.getElementById("api-webhook-url").value || "").trim();
+  const eventType = document.getElementById("wh-test-event").value || "ping";
+  const resultEl = document.getElementById("webhook-test-result");
+  resultEl.style.display = "block";
+
+  if (!url) {
+    resultEl.style.background = "#fef2f2";
+    resultEl.style.color = "#991b1b";
+    resultEl.textContent = "✕ 請先填入 Webhook URL（不需先儲存即可測試）";
+    return;
+  }
+  if (!/^https?:\/\//i.test(url)) {
+    resultEl.style.background = "#fef2f2";
+    resultEl.style.color = "#991b1b";
+    resultEl.textContent = "✕ URL 必須以 http:// 或 https:// 開頭";
+    return;
+  }
+
+  resultEl.style.background = "#eff6ff";
+  resultEl.style.color = "#1e3a8a";
+  resultEl.innerHTML = '<span class="spinner" style="display:inline-block;vertical-align:middle;"></span> 發送中...';
+
+  const payload = _samplePayload(eventType);
+  const body = { event: eventType, data: payload, timestamp: new Date().toISOString(), test: true };
+  const t0 = Date.now();
+
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const ms = Date.now() - t0;
+    const text = await resp.text();
+    const ok = resp.ok;
+
+    resultEl.style.background = ok ? "#f0fdf4" : "#fef2f2";
+    resultEl.style.color = ok ? "#166534" : "#991b1b";
+    const snippet = (text || "").slice(0, 300).replace(/[<>&]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" })[c]);
+    resultEl.innerHTML =
+      `${ok ? "✓" : "✕"} HTTP <strong>${resp.status}</strong> · ${ms} ms` +
+      `<details style="margin-top:4px;"><summary style="cursor:pointer;">送出 payload</summary>` +
+      `<pre style="margin:4px 0 0;padding:6px;background:#fff;border-radius:4px;overflow:auto;max-height:120px;font-size:10px;">${JSON.stringify(body, null, 2)}</pre></details>` +
+      (snippet ? `<details style="margin-top:4px;" open><summary style="cursor:pointer;">伺服器回應 (${text.length} bytes)</summary>` +
+                 `<pre style="margin:4px 0 0;padding:6px;background:#fff;border-radius:4px;overflow:auto;max-height:120px;font-size:10px;">${snippet}${text.length > 300 ? "..." : ""}</pre></details>` : "");
+
+    // 把測試結果也塞入發送記錄
+    webhookDeliveryLog.unshift({
+      id: Date.now().toString(),
+      eventType: eventType + " (測試)",
+      payload,
+      timestamp: new Date().toISOString(),
+      status: ok ? "success" : "failed",
+      httpStatus: resp.status,
+    });
+    if (webhookDeliveryLog.length > 100) webhookDeliveryLog.length = 100;
+    localStorage.setItem("utfind_webhook_log", JSON.stringify(webhookDeliveryLog));
+    renderWebhookLog();
+  } catch (e) {
+    resultEl.style.background = "#fef2f2";
+    resultEl.style.color = "#991b1b";
+    resultEl.innerHTML = `✕ 連線錯誤：${e.message}<br><span style="font-size:10px;color:#666;">常見原因：CORS 阻擋（請在伺服器加 <code>Access-Control-Allow-Origin</code>）、URL 不存在、HTTPS 憑證問題</span>`;
+  }
+}
+
 function triggerWebhook(eventType, payload) {
   if (!webhookConfig.url || !webhookConfig.events || !webhookConfig.events[eventType]) return;
 
@@ -4890,7 +5007,13 @@ function injectDemoData() {
 const _origConnect2 = connect;
 connect = async function() {
   await _origConnect2();
-  if (allTags.length > 0) injectDemoData();
+  if (allTags.length > 0) {
+    injectDemoData();
+    // 連線後只保留 3 個示範告警（避免空面板時看起來像壞掉）
+    if (alertPanelItems.length < 3) {
+      triggerTestAlerts();
+    }
+  }
 };
 
 // ================================================================

@@ -82,7 +82,7 @@ app.use("/api/mobile/notifications", require("./api/mobile/notifications"));
 app.use(
   "/api",
   createProxyMiddleware({
-    target: "https://utfind.api.beta.uttec.com.tw/api",
+    target: "https://api.utfind.uttec.com.tw/api",
     changeOrigin: true,
     pathRewrite: { "^/api": "" },
   })

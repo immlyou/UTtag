@@ -5,7 +5,7 @@
   "rewrites": [
     {
       "source": "/api/v1/tags/:path*",
-      "destination": "https://utfind.api.beta.uttec.com.tw/api/v1/tags/:path*"
+      "destination": "https://api.utfind.uttec.com.tw/api/v1/tags/:path*"
     },
     {
       "source": "/api/:path*",

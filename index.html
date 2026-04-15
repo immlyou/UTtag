@@ -59,13 +59,6 @@
       <button class="nav-btn" onclick="switchPanel('logistics')" title="物流 (0)" id="nav-logistics" data-industry-not="biomedical">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM6 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-9l1.96 2.5H17V9.5h2.5zm-1.5 9c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
       </button>
-      <button class="nav-btn" onclick="switchPanel('findpda')" title="尋找 PDA" id="nav-findpda">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
-      </button>
-      <button class="nav-btn" onclick="switchPanel('chat')" title="即時聊天" id="nav-chat">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg>
-        <span id="chat-unread-badge" class="nav-badge" style="display:none;">0</span>
-      </button>
       <button class="nav-btn admin-only" onclick="switchPanel('schedules')" title="Report Schedules" id="nav-schedules">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2zm-7 5h5v5h-5z"/></svg>
       </button>
@@ -96,7 +89,7 @@
         <span id="auto-refresh-badge" class="refresh-badge" style="display:none;"></span>
       </div>
       <div class="connect-bar">
-        <input type="text" id="api-key" placeholder="API Key" value="P7K5LQ9K" />
+        <input type="text" id="api-key" placeholder="API Key" value="KPHWUWE4" />
         <button id="btn-connect" onclick="connect()">
           <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
           <span data-i18n="connect">連線</span>
@@ -194,6 +187,12 @@
       <div class="panel-header"><h2 data-i18n="history">歷史軌跡</h2></div>
       <div class="form-group">
         <label data-i18n="selectTag">選擇 Tag</label>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+          <input type="text" id="history-tag-search" placeholder="搜尋 MAC 或別名..." oninput="filterHistoryTags()" style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:5px;font:inherit;font-size:12px;" />
+          <button type="button" class="btn-ghost-sm" onclick="toggleAllHistoryTags(true)" title="全選">全選</button>
+          <button type="button" class="btn-ghost-sm" onclick="toggleAllHistoryTags(false)" title="取消全選">清除</button>
+        </div>
+        <div id="history-tag-count" style="font-size:11px;color:var(--text-muted);margin-bottom:4px;"></div>
         <div id="history-mac-checkboxes" class="mac-checkboxes"></div>
       </div>
       <div class="quick-range">
@@ -636,7 +635,22 @@
             <label class="mac-checkbox-item"><input type="checkbox" id="wh-arrival" checked /> 任務抵達</label>
           </div>
         </div>
-        <button class="btn-accent" onclick="saveWebhookConfig()">儲存 Webhook</button>
+        <div class="btn-row">
+          <button class="btn-accent" onclick="saveWebhookConfig()" style="flex:1;">儲存 Webhook</button>
+          <button class="btn-ghost" onclick="testWebhook()" title="送一個範例 payload 到目前的 URL，並顯示伺服器回應">送測試</button>
+        </div>
+        <div class="form-group" style="margin-top:8px;">
+          <label style="font-size:11px;">指定事件型態（測試時送這個）</label>
+          <select id="wh-test-event" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:5px;font:inherit;font-size:12px;">
+            <option value="sos">sos — SOS 求救</option>
+            <option value="lowbat">lowbat — 低電量</option>
+            <option value="temp">temp — 溫度異常</option>
+            <option value="geofence">geofence — 圍欄離開</option>
+            <option value="arrival">arrival — 任務抵達</option>
+            <option value="ping">ping — 連通測試（最簡）</option>
+          </select>
+        </div>
+        <div id="webhook-test-result" style="margin-top:8px;display:none;font-size:11px;border-radius:5px;padding:8px;"></div>
         <div style="margin-top:12px;">
           <div class="section-title" style="font-size:11px;">Webhook 發送記錄</div>
           <div id="webhook-log-list" class="event-list" style="max-height:180px;overflow-y:auto;">
@@ -886,8 +900,8 @@
       </div>
     </div>
 
-    <!-- 尋找 PDA -->
-    <div class="panel" id="panel-findpda">
+    <!-- 尋找 PDA（已移除） -->
+    <div class="panel" id="panel-findpda" style="display:none!important;" hidden>
       <div class="panel-header"><h2>尋找 PDA</h2></div>
 
       <!-- 管理 PDA：新增 / 綁定 Tag -->

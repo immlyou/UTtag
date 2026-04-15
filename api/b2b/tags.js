@@ -1,7 +1,7 @@
 const { supabase } = require("../../lib/supabase");
 const { getClientFromApiKey, cors, json, error } = require("../../lib/auth");
 
-const UTTEC_API = "https://utfind.api.beta.uttec.com.tw/api/v1/tags";
+const UTTEC_API = "https://api.utfind.uttec.com.tw/api/v1/tags";
 const UTTEC_KEY = process.env.UTTEC_API_KEY || "";
 
 module.exports = async function handler(req, res) {

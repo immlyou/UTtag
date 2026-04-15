@@ -161,6 +161,7 @@
   <nav class="tabs" id="tabs">
     <a data-tab="dashboard" class="active">儀表板</a>
     <a data-tab="alerts">告警</a>
+    <a data-tab="usage">用量</a>
     <a data-tab="users">成員</a>
     <a data-tab="profile">帳號</a>
   </nav>
@@ -185,6 +186,24 @@
       <div class="card">
         <h2><span>近 24 小時告警</span><span id="alert-count" class="count-badge">0</span></h2>
         <div id="alerts-container"><div class="loading">分析中…</div></div>
+      </div>
+    </section>
+
+    <!-- Usage -->
+    <section id="tab-usage" class="tab-panel">
+      <div class="card">
+        <h2>
+          <span>API 用量</span>
+          <span style="display:flex;gap:6px;align-items:center;">
+            <select id="usage-period" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font:inherit;font-size:12px;cursor:pointer;">
+              <option value="7d">最近 7 天</option>
+              <option value="30d" selected>最近 30 天</option>
+              <option value="90d">最近 90 天</option>
+            </select>
+            <button id="usage-export" style="background:var(--uttag-primary);color:#fff;border:none;padding:5px 12px;border-radius:5px;cursor:pointer;font:inherit;font-size:12px;">CSV 匯出</button>
+          </span>
+        </h2>
+        <div id="usage-container"><div class="loading">載入用量資料…</div></div>
       </div>
     </section>
 
@@ -311,7 +330,7 @@
         a.classList.toggle("active", a.dataset.tab === name));
       document.querySelectorAll(".tab-panel").forEach(p =>
         p.classList.toggle("active", p.id === "tab-" + name));
-      const loaders = { alerts: loadAlerts, users: loadUsers, profile: loadProfile };
+      const loaders = { alerts: loadAlerts, usage: loadUsage, users: loadUsers, profile: loadProfile };
       if (loaders[name]) loaders[name]();
     }
     window.addEventListener("hashchange", () => {
@@ -405,6 +424,141 @@
       } catch (err) {
         container.innerHTML = '<div class="empty">載入失敗：' + escapeHtml(err.message) + "</div>";
       }
+    }
+
+    // ---------- Usage ----------
+    let usageWired = false;
+    async function loadUsage() {
+      const container = document.getElementById("usage-container");
+      const periodSel = document.getElementById("usage-period");
+      const exportBtn = document.getElementById("usage-export");
+      if (!usageWired) {
+        usageWired = true;
+        periodSel.addEventListener("change", () => loadUsage());
+        exportBtn.addEventListener("click", () => {
+          const p = periodSel.value;
+          const url = "/api/tenant/usage/export?period=" + encodeURIComponent(p);
+          // fetch with auth, then trigger download
+          fetch(url, { headers: TENANT.getAuthHeader() })
+            .then(r => r.blob())
+            .then(blob => {
+              const a = document.createElement("a");
+              a.href = URL.createObjectURL(blob);
+              a.download = "usage_" + p + ".csv";
+              a.click();
+              setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+            })
+            .catch(err => alert("匯出失敗：" + err.message));
+        });
+      }
+      container.innerHTML = '<div class="loading">載入用量資料…</div>';
+      try {
+        const data = await fetchJSON("/api/tenant/usage?period=" + encodeURIComponent(periodSel.value));
+        renderUsage(container, data);
+      } catch (err) {
+        container.innerHTML = '<div class="empty">載入失敗：' + escapeHtml(err.message) + "</div>";
+      }
+    }
+
+    function renderUsage(container, data) {
+      const s = data.summary || {};
+      const daily = data.daily_usage || [];
+      const totalCalls = s.api_calls_period || 0;
+      const totalErrors = s.api_errors_period || 0;
+      const errorRate = totalCalls > 0 ? ((totalErrors / totalCalls) * 100).toFixed(2) : "0.00";
+      const tier = s.tier || "free";
+
+      // Quota bar helper
+      const bar = (pct) => {
+        const safe = Math.min(100, Math.max(0, pct || 0));
+        const color = safe >= 90 ? "#dc2626" : safe >= 70 ? "#f59e0b" : "var(--uttag-primary)";
+        return '<div style="background:#e5e7eb;border-radius:4px;height:6px;overflow:hidden;margin-top:4px;">' +
+               '<div style="background:' + color + ';height:100%;width:' + safe + '%;transition:width .3s;"></div></div>';
+      };
+
+      const card = (label, value, sub) =>
+        '<div style="background:#f9fafb;border:1px solid var(--border);border-radius:8px;padding:14px;">' +
+          '<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">' + label + '</div>' +
+          '<div style="font-size:22px;font-weight:600;color:#111;">' + value + '</div>' +
+          (sub || '') +
+        '</div>';
+
+      const summaryHtml =
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;padding:16px;">' +
+          card("方案", '<span style="text-transform:capitalize;">' + escapeHtml(tier) + '</span>') +
+          card("API 呼叫 (期間)", totalCalls.toLocaleString()) +
+          card("錯誤數", totalErrors.toLocaleString(),
+               '<div style="font-size:11px;color:var(--muted);margin-top:4px;">錯誤率 ' + errorRate + '%</div>') +
+          card("綁定裝置",
+               (s.devices_bound || 0) + (s.devices_limit ? " / " + s.devices_limit : ""),
+               s.devices_limit ? bar(s.devices_quota_percent) : "") +
+          card("活躍 API Keys",
+               (s.api_keys_active || 0) + (s.api_keys_limit ? " / " + s.api_keys_limit : ""),
+               s.api_keys_limit ? bar(s.api_keys_quota_percent) : "") +
+          card("成員人數", s.users_count || 0) +
+        '</div>';
+
+      const chartHtml = drawUsageChart(daily);
+
+      container.innerHTML = summaryHtml + chartHtml;
+    }
+
+    function drawUsageChart(daily) {
+      if (!daily || daily.length === 0) {
+        return '<div class="empty" style="padding:24px;">這段期間沒有 API 呼叫紀錄</div>';
+      }
+      const W = 720, H = 200, padL = 40, padR = 16, padT = 16, padB = 28;
+      const innerW = W - padL - padR, innerH = H - padT - padB;
+      const max = Math.max(1, ...daily.map(d => d.request_count));
+      const xStep = daily.length > 1 ? innerW / (daily.length - 1) : 0;
+      const points = daily.map((d, i) => {
+        const x = padL + i * xStep;
+        const y = padT + innerH - (d.request_count / max) * innerH;
+        return [x, y, d];
+      });
+      const pathD = points.map((p, i) => (i === 0 ? "M" : "L") + p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
+      const areaD = pathD + " L" + points[points.length-1][0].toFixed(1) + "," + (padT + innerH) +
+                    " L" + points[0][0].toFixed(1) + "," + (padT + innerH) + " Z";
+      const errorPath = points.map((p, i) => {
+        const y = padT + innerH - (p[2].error_count / max) * innerH;
+        return (i === 0 ? "M" : "L") + p[0].toFixed(1) + "," + y.toFixed(1);
+      }).join(" ");
+      const yLabels = [0, 0.5, 1].map(f => {
+        const v = Math.round(max * f);
+        const y = padT + innerH - f * innerH;
+        return '<text x="' + (padL - 6) + '" y="' + (y + 3) + '" text-anchor="end" font-size="10" fill="#6b7280">' + v + '</text>' +
+               '<line x1="' + padL + '" y1="' + y + '" x2="' + (W - padR) + '" y2="' + y + '" stroke="#e5e7eb" stroke-dasharray="2,2" />';
+      }).join("");
+      const xLabels = (() => {
+        const showCount = Math.min(7, daily.length);
+        const step = Math.max(1, Math.floor(daily.length / showCount));
+        let out = "";
+        for (let i = 0; i < daily.length; i += step) {
+          const x = padL + i * xStep;
+          const label = (daily[i].date || "").slice(5); // MM-DD
+          out += '<text x="' + x + '" y="' + (H - 8) + '" text-anchor="middle" font-size="10" fill="#6b7280">' + label + '</text>';
+        }
+        return out;
+      })();
+      const dots = points.map(p =>
+        '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="3" fill="var(--uttag-primary)">' +
+        '<title>' + (p[2].date || "") + ': ' + p[2].request_count + ' 次 / ' + p[2].error_count + ' 錯誤</title>' +
+        '</circle>').join("");
+      return '<div style="padding:0 16px 16px;">' +
+        '<div style="font-size:13px;font-weight:600;color:#374151;margin:8px 0 4px;">每日 API 呼叫趨勢</div>' +
+        '<div style="display:flex;gap:14px;font-size:11px;color:var(--muted);margin-bottom:6px;">' +
+          '<span><span style="display:inline-block;width:10px;height:2px;background:var(--uttag-primary);vertical-align:middle;margin-right:4px;"></span>呼叫數</span>' +
+          '<span><span style="display:inline-block;width:10px;height:2px;background:#dc2626;vertical-align:middle;margin-right:4px;"></span>錯誤數</span>' +
+        '</div>' +
+        '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;background:#fff;border:1px solid var(--border);border-radius:8px;">' +
+          yLabels +
+          '<path d="' + areaD + '" fill="var(--uttag-primary)" fill-opacity="0.08" />' +
+          '<path d="' + pathD + '" stroke="var(--uttag-primary)" stroke-width="2" fill="none" />' +
+          '<path d="' + errorPath + '" stroke="#dc2626" stroke-width="1.5" fill="none" stroke-dasharray="4,3" />' +
+          dots +
+          xLabels +
+        '</svg>' +
+      '</div>';
     }
 
     // ---------- Users ----------
