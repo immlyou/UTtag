@@ -2391,15 +2391,19 @@ button { cursor: pointer; border: none; font-weight: 600; transition: all 0.2s; 
 .modal-content {
   position: relative;
   z-index: 1;
-  background: var(--bg-sidebar);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  background: var(--bg-sidebar, #1f2937);
+  color: var(--text, #e5e7eb);
+  border: 1px solid var(--border, rgba(255,255,255,.1));
+  border-radius: var(--radius, 10px);
   width: 90%;
   max-width: 500px;
   max-height: 85vh;
   overflow-y: auto;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow, 0 20px 60px rgba(0,0,0,.5));
   animation: modalIn 0.2s ease-out;
+  /* 確保在 MOMO/深色模式下都是實心、不被父層 opacity 繼承 */
+  opacity: 1 !important;
+  visibility: visible !important;
 }
 
 @keyframes modalIn {
