@@ -99,22 +99,21 @@
 
   function renameKPIs(map) {
     if (!map) return;
-    // 等 DOM 出來再找 i18n 節點替換（app.js 會隨語言切換重新渲染，用 MutationObserver 保持）
+    // 僅針對 [data-i18n]、且只有在需要改時才寫入（避免和數字動畫互相觸發）
     const doRename = () => {
       document.querySelectorAll("[data-i18n]").forEach(el => {
         const key = el.getAttribute("data-i18n");
-        if (map[key]) el.textContent = map[key];
+        const want = map[key];
+        if (want && el.textContent !== want) el.textContent = want;
       });
     };
     doRename();
-    // 若 app.js 稍後才渲染 KPI，用 observer 補上
-    const kpi = document.getElementById("kpi-grid");
-    if (kpi) {
-      const obs = new MutationObserver(doRename);
-      obs.observe(kpi, { subtree: true, childList: true, characterData: true });
-    }
-    // 一秒後再跑一次當保險
-    setTimeout(doRename, 1500);
+    // 退場式觸發：只在幾個時間點補跑，不持續 observe（避免被動畫高頻觸發）
+    [300, 1500, 4000, 10_000].forEach(t => setTimeout(doRename, t));
+    // 切換語言也要重跑
+    document.querySelectorAll("#btn-lang").forEach(btn => {
+      btn.addEventListener("click", () => setTimeout(doRename, 100));
+    });
   }
 
   const active = getActive();
