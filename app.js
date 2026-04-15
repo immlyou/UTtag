@@ -210,11 +210,30 @@ map.on("click", (e) => {
 // ================================================================
 //  [A3] Marker 圖示
 // ================================================================
-function createIcon(status) {
-  const color = status === "sos" ? "#ef4444" : "#3b82f6";
+function computeMarkerState(tag) {
+  const out = { arrived: false, alert: false };
+  try {
+    const prog = (typeof computeDeliveryProgress === "function") ? computeDeliveryProgress(tag.mac) : null;
+    if (prog && prog.pct >= 100) out.arrived = true;
+  } catch {}
+  if (tag.lastBatteryLevel != null && tag.lastBatteryLevel <= 20) out.alert = true;
+  if (tag.temperature != null && (tag.temperature < TEMP_MIN || tag.temperature > TEMP_MAX)) out.alert = true;
+  return out;
+}
+
+function createIcon(status, extra) {
+  extra = extra || {};
+  const isSos = status === "sos";
+  const isArrived = !!extra.arrived;
+  const isAlert = !!extra.alert;
+  const color = isSos ? "#ef4444" : isArrived ? "#22c55e" : isAlert ? "#f59e0b" : "#3b82f6";
+  const heartbeat = isSos || isAlert ? "uttag-heartbeat 1.1s infinite" : "";
+  const burst = isArrived
+    ? `<span class="uttag-burst"></span><span class="uttag-burst" style="animation-delay:.35s;"></span>`
+    : "";
   return L.divIcon({
-    className: "custom-marker",
-    html: `<div style="width:28px;height:28px;background:${color};border:3px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,0.3);${status === "sos" ? "animation:pulse 1s infinite;" : ""}"></div>`,
+    className: "custom-marker uttag-marker" + (isArrived ? " arrived" : "") + (isAlert ? " alert" : "") + (isSos ? " sos" : ""),
+    html: `<div class="uttag-marker-dot" style="width:28px;height:28px;background:${color};border:3px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,0.3);${heartbeat ? "animation:" + heartbeat + ";" : ""}"></div>${burst}`,
     iconSize: [28, 28], iconAnchor: [14, 14],
   });
 }
@@ -1249,14 +1268,15 @@ function updateMarkers() {
     newMacs.add(tag.mac);
     const pos = [tag.lastLatitude, tag.lastLongitude];
 
+    const extra = computeMarkerState(tag);
     if (markers[tag.mac]) {
       // 已有 marker → 更新位置（不重建）
       markers[tag.mac].setLatLng(pos);
-      markers[tag.mac].setIcon(createIcon(tag.status));
+      markers[tag.mac].setIcon(createIcon(tag.status, extra));
       markers[tag.mac]._popup && markers[tag.mac].setPopupContent(createPopupContent(tag));
     } else {
       // 新 marker
-      const marker = L.marker(pos, { icon: createIcon(tag.status) })
+      const marker = L.marker(pos, { icon: createIcon(tag.status, extra) })
         .bindPopup(createPopupContent(tag));
       markers[tag.mac] = marker;
     }
