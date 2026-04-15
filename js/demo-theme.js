@@ -55,7 +55,11 @@
     const root = document.documentElement;
     root.style.setProperty("--uttag-primary", t.primaryColor);
     root.style.setProperty("--accent", t.primaryColor);
+    root.style.setProperty("--accent-glow", "rgba(224,30,90,0.25)");
     if (t.primaryHover) root.style.setProperty("--accent-hover", t.primaryHover);
+
+    // 1b. 注入 CSS 讓差異「大到一眼看見」
+    injectThemeCSS(t);
 
     // 2. 頂部 banner（固定在畫面最頂、不擋內容太多）
     if (!document.getElementById("demo-theme-banner")) {
@@ -95,6 +99,40 @@
     };
 
     document.title = t.short + " · " + (document.title || "UTtag");
+  }
+
+  function injectThemeCSS(t) {
+    if (document.getElementById("demo-theme-css")) return;
+    const s = document.createElement("style");
+    s.id = "demo-theme-css";
+    const bg = t.bannerBg || ("linear-gradient(180deg," + t.primaryColor + " 0%,#b01449 100%)");
+    s.textContent = `
+      /* ──── MOMO Demo 主題（drama 版） ──── */
+      /* sidebar 整條改粉紅漸層 */
+      .nav-sidebar, aside.nav-sidebar { background: ${bg} !important; border-right: 1px solid rgba(0,0,0,.2) !important; }
+      .nav-btn { color: rgba(255,255,255,.85) !important; }
+      .nav-btn:hover { background: rgba(255,255,255,.15) !important; color: #fff !important; }
+      .nav-btn.active { background: rgba(255,255,255,.25) !important; color: #fff !important; }
+      .nav-btn.active::before { background: #fff !important; }
+
+      /* 連線鈕 + 主要按鈕 */
+      #btn-connect { background: linear-gradient(135deg,${t.primaryColor},${t.primaryHover || "#b01449"}) !important; }
+      #btn-connect:hover { box-shadow: 0 4px 20px rgba(224,30,90,.45) !important; }
+      .btn-accent { background: ${t.primaryColor} !important; }
+      .btn-accent:hover { background: ${t.primaryHover || "#b01449"} !important; }
+
+      /* KPI 卡片與圖標 tint */
+      .kpi-icon { color: ${t.primaryColor} !important; }
+
+      /* 地圖 tile 微調（整體染粉） */
+      .leaflet-tile-pane { filter: hue-rotate(280deg) saturate(1.1); }
+      /* marker 換色：app.js 用內嵌 SVG/DivIcon，這裡用 filter 讓藍色 marker 變粉 */
+      .leaflet-marker-icon:not(.leaflet-marker-shadow) { filter: hue-rotate(280deg) saturate(1.5); }
+
+      /* 面板標題強調 */
+      .panel-header h2::before { color: ${t.primaryColor}; }
+    `;
+    document.head.appendChild(s);
   }
 
   function renameKPIs(map) {
