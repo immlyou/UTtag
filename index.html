@@ -1071,8 +1071,8 @@
   </aside>
 
   <!-- Schedule Modal -->
-  <div id="schedule-modal" class="modal hidden">
-    <div class="modal-overlay" onclick="closeScheduleModal()"></div>
+  <div id="schedule-modal" class="modal hidden" onclick="if(event.target===this||event.target.classList.contains('modal-overlay'))closeScheduleModal()">
+    <div class="modal-overlay"></div>
     <div class="modal-content schedule-modal-content">
       <div class="modal-header">
         <h3 id="schedule-modal-title">New Schedule</h3>
