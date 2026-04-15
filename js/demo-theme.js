@@ -108,12 +108,13 @@
     const bg = t.bannerBg || ("linear-gradient(180deg," + t.primaryColor + " 0%,#b01449 100%)");
     s.textContent = `
       /* ──── MOMO Demo 主題（drama 版） ──── */
-      /* sidebar 整條改粉紅漸層 */
-      .nav-sidebar, aside.nav-sidebar { background: ${bg} !important; border-right: 1px solid rgba(0,0,0,.2) !important; }
-      .nav-btn { color: rgba(255,255,255,.85) !important; }
-      .nav-btn:hover { background: rgba(255,255,255,.15) !important; color: #fff !important; }
-      .nav-btn.active { background: rgba(255,255,255,.25) !important; color: #fff !important; }
-      .nav-btn.active::before { background: #fff !important; }
+      /* sidebar 整條改粉紅漸層（真實 selector 是 #nav-rail） */
+      #nav-rail { background: ${bg} !important; border-right: 1px solid rgba(0,0,0,.2) !important; box-shadow: 2px 0 10px rgba(224,30,90,.25) !important; }
+      #nav-rail .nav-btn { color: rgba(255,255,255,.8) !important; }
+      #nav-rail .nav-btn:hover { background: rgba(0,0,0,.25) !important; color: #fff !important; }
+      #nav-rail .nav-btn.active { background: rgba(255,255,255,.95) !important; color: ${t.primaryColor} !important; }
+      #nav-rail .nav-btn.active::before { background: ${t.primaryColor} !important; }
+      #nav-rail .nav-btn svg { filter: drop-shadow(0 1px 2px rgba(0,0,0,.25)); }
 
       /* 連線鈕 + 主要按鈕 */
       #btn-connect { background: linear-gradient(135deg,${t.primaryColor},${t.primaryHover || "#b01449"}) !important; }
