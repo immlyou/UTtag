@@ -3,3 +3,24 @@ server.js
 .git
 .DS_Store
 supabase-schema.sql
+
+# 只有 /api/ai 和 /api/public 要當 Vercel serverless function；
+# 其餘 /api/* 是給 Render 後端 Express 用的，透過 vercel.json rewrite 轉送
+api/admin
+api/auth.js
+api/b2b
+api/chat
+api/clients
+api/devices
+api/keys
+api/mobile
+api/schedules
+api/sensors
+api/tenant
+api/usage
+lib
+tests
+docs
+scripts
+supabase
+mobile
