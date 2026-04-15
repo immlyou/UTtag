@@ -3098,6 +3098,10 @@ function updateTaskMileage() {
     const tag = latestData.find(t => t.mac === task.mac);
     if (!tag || tag.lastLatitude == null) return;
 
+    // 舊 task 可能沒有這些欄位（例如從本地手動塞的 demo），補齊預設值
+    if (!Array.isArray(task.mileageHistory)) task.mileageHistory = [];
+    if (typeof task.totalMileageKm !== "number") task.totalMileageKm = 0;
+
     const currentPos = { lat: tag.lastLatitude, lng: tag.lastLongitude };
 
     // 初始化歷史
@@ -5121,11 +5125,11 @@ function injectDemoData() {
     const m4 = demoMacs[3] || mac1;
     const m6 = demoMacs[5] || mac2;
     tasks = [
-      { id: "t1", name: "MP-00123 → 板橋門市", shipmentNo: "MO-2026-00123", mac: mac1, deadline: new Date(now + 3600000 * 2).toISOString(), status: "active", createdAt: new Date(now - 3600000 * 3).toISOString() },
-      { id: "t2", name: "MP-00124 冷鏈 → 台中門市", shipmentNo: "MO-2026-00124", mac: mac2, deadline: new Date(now - 1800000).toISOString(), status: "active", createdAt: new Date(now - 3600000 * 8).toISOString() },
-      { id: "t3", name: "MP-00125 → 高雄三民", shipmentNo: "MO-2026-00125", mac: m3, deadline: new Date(now + 3600000 * 6).toISOString(), status: "active", createdAt: new Date(now - 1800000).toISOString() },
-      { id: "t4", name: "MP-00126 易碎 → 信義松壽", shipmentNo: "MO-2026-00126", mac: m4, deadline: new Date(now + 3600000 * 1).toISOString(), status: "active", createdAt: new Date(now - 3600000 * 1.2).toISOString() },
-      { id: "t5", name: "MP-00128 → 嘉義西區", shipmentNo: "MO-2026-00128", mac: m6, deadline: new Date(now + 86400000).toISOString(), status: "done", createdAt: new Date(now - 86400000).toISOString() },
+      { id: "t1", name: "MP-00123 → 板橋門市", shipmentNo: "MO-2026-00123", mac: mac1, deadline: new Date(now + 3600000 * 2).toISOString(), status: "active", createdAt: new Date(now - 3600000 * 3).toISOString(), mileageHistory: [], totalMileageKm: 0 },
+      { id: "t2", name: "MP-00124 冷鏈 → 台中門市", shipmentNo: "MO-2026-00124", mac: mac2, deadline: new Date(now - 1800000).toISOString(), status: "active", createdAt: new Date(now - 3600000 * 8).toISOString(), mileageHistory: [], totalMileageKm: 0 },
+      { id: "t3", name: "MP-00125 → 高雄三民", shipmentNo: "MO-2026-00125", mac: m3, deadline: new Date(now + 3600000 * 6).toISOString(), status: "active", createdAt: new Date(now - 1800000).toISOString(), mileageHistory: [], totalMileageKm: 0 },
+      { id: "t4", name: "MP-00126 易碎 → 信義松壽", shipmentNo: "MO-2026-00126", mac: m4, deadline: new Date(now + 3600000 * 1).toISOString(), status: "active", createdAt: new Date(now - 3600000 * 1.2).toISOString(), mileageHistory: [], totalMileageKm: 0 },
+      { id: "t5", name: "MP-00128 → 嘉義西區", shipmentNo: "MO-2026-00128", mac: m6, deadline: new Date(now + 86400000).toISOString(), status: "done", createdAt: new Date(now - 86400000).toISOString(), mileageHistory: [], totalMileageKm: 0 },
     ];
     localStorage.setItem("utfind_tasks", JSON.stringify(tasks));
   }
