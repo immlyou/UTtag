@@ -4860,6 +4860,7 @@ switchPanel = function(name) {
   if (name === "settings") refreshSettingsPanel();
   if (name === "coldchain") refreshColdChainPanel();
   if (name === "logistics") refreshLogisticsPanel();
+  if (name === "usage" && window.UTTAG_ADDONS?.loadUsage) window.UTTAG_ADDONS.loadUsage();
 };
 
 // 增強 connect 以初始化所有面板
