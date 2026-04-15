@@ -1995,7 +1995,10 @@ function showTagDetail(mac) {
   const metaHtml = (meta.orderNo || meta.sku || meta.destination || meta.origin) ? `
     <div class="detail-location" style="background:linear-gradient(135deg,rgba(59,130,246,.06),rgba(168,85,247,.04));margin-top:10px;">
       <p style="margin-bottom:6px;"><b>📦 棧板資訊</b>
-        <button class="btn-ghost-sm" onclick="editTagMeta('${mac}')" style="float:right;font-size:10px;padding:2px 8px;">編輯</button></p>
+        <span style="float:right;">
+          <button class="btn-ghost-sm" onclick="shareTagLink('${mac}')" style="font-size:10px;padding:2px 8px;background:linear-gradient(135deg,#e01e5a,#a855f7);color:#fff;border:none;" title="產生公開追蹤頁連結並複製">🔗 分享</button>
+          <button class="btn-ghost-sm" onclick="editTagMeta('${mac}')" style="font-size:10px;padding:2px 8px;margin-left:4px;">編輯</button>
+        </span></p>
       ${meta.orderNo ? `<p style="font-size:12px;"><span style="color:var(--text-muted);">訂單號</span> <span class="mono">${meta.orderNo}</span></p>` : ""}
       ${meta.sku ? `<p style="font-size:12px;"><span style="color:var(--text-muted);">品項</span> ${meta.sku}</p>` : ""}
       ${meta.weight ? `<p style="font-size:12px;"><span style="color:var(--text-muted);">重量</span> ${meta.weight}</p>` : ""}
@@ -2061,6 +2064,40 @@ function showTagDetail(mac) {
   `;
 
   switchPanel("detail");
+}
+
+// ---------- 分享追蹤頁連結 ----------
+function b64urlEncode(s) {
+  return btoa(unescape(encodeURIComponent(s))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function buildTrackUrl(mac) {
+  const meta = tagMeta[mac] || {};
+  const task = (typeof tasks !== "undefined" ? tasks : []).find(t => t.mac === mac && t.status === "active");
+  const params = new URLSearchParams();
+  params.set("id", b64urlEncode(mac));
+  if (tagAliases[mac]) params.set("label", tagAliases[mac]);
+  if (meta.orderNo) params.set("orderNo", meta.orderNo);
+  if (meta.sku) params.set("sku", meta.sku);
+  if (meta.origin) params.set("origin", meta.origin);
+  if (meta.destination) params.set("dest", meta.destination);
+  if (task) {
+    params.set("created", task.createdAt);
+    params.set("deadline", task.deadline);
+  }
+  return location.origin + "/t.html?" + params.toString();
+}
+
+async function shareTagLink(mac) {
+  const url = buildTrackUrl(mac);
+  try {
+    await navigator.clipboard.writeText(url);
+    showToast("追蹤連結已複製到剪貼簿！可直接寄給客戶", "success", 4000);
+  } catch {
+    prompt("複製這個連結給客戶 / 收貨人：", url);
+  }
+  // 打開新分頁預覽
+  window.open(url, "_blank", "noopener");
 }
 
 // ---------- 棧板 Metadata 編輯 + 配送進度計算 ----------

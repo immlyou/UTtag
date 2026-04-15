@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>包裹追蹤</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Inter", "Noto Sans TC", -apple-system, system-ui, sans-serif;
+      background: #f3f4f6;
+      color: #111;
+      min-height: 100vh;
+    }
+    .bar {
+      background: linear-gradient(135deg, #e01e5a, #a855f7);
+      color: #fff;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .bar strong { font-size: 14px; letter-spacing: .5px; }
+    .bar .live { font-size: 10px; background: rgba(255,255,255,.22); padding: 2px 8px; border-radius: 10px; display: inline-flex; align-items: center; gap: 4px; }
+    .bar .live::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #fca5a5; animation: blink 1s infinite; }
+    @keyframes blink { 50% { opacity: .3; } }
+
+    main { max-width: 480px; margin: 0 auto; padding: 16px; }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.06);
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    .card-head {
+      padding: 14px 16px;
+      border-bottom: 1px solid #f3f4f6;
+      font-size: 12px;
+      color: #6b7280;
+      font-weight: 600;
+      letter-spacing: .5px;
+      text-transform: uppercase;
+    }
+    .card-body { padding: 16px; }
+    .status-row { display: flex; align-items: center; gap: 12px; }
+    .status-dot { width: 14px; height: 14px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 12px #22c55e; animation: blink 2s infinite; }
+    .status-dot.offline { background: #9ca3af; box-shadow: 0 0 12px #9ca3af; animation: none; }
+    .status-dot.alert { background: #f59e0b; box-shadow: 0 0 12px #f59e0b; }
+    .status-text { font-size: 18px; font-weight: 700; }
+    .status-sub { font-size: 12px; color: #6b7280; margin-top: 2px; }
+
+    #map { height: 320px; background: #e5e7eb; }
+
+    .row { display: flex; justify-content: space-between; align-items: flex-start; padding: 8px 0; font-size: 13px; }
+    .row + .row { border-top: 1px solid #f3f4f6; }
+    .row .k { color: #6b7280; }
+    .row .v { color: #111; font-weight: 600; text-align: right; max-width: 60%; }
+    .row .v.mono { font-family: "SF Mono", monospace; font-weight: 500; }
+
+    .progress {
+      margin: 12px 0 0;
+    }
+    .progress-label { display: flex; justify-content: space-between; font-size: 11px; color: #6b7280; margin-bottom: 4px; }
+    .progress-bar { height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg, #e01e5a, #a855f7); border-radius: 4px; transition: width .4s; }
+
+    footer { text-align: center; color: #9ca3af; font-size: 11px; padding: 16px; }
+    footer a { color: #e01e5a; text-decoration: none; }
+
+    .loading { text-align: center; padding: 60px 20px; color: #6b7280; }
+    .error { background: #fef2f2; color: #991b1b; padding: 16px; border-radius: 8px; margin: 16px; text-align: center; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <strong>📦 包裹即時追蹤</strong>
+    <span class="live">LIVE</span>
+  </div>
+
+  <main id="app">
+    <div class="loading">正在載入追蹤資訊…</div>
+  </main>
+
+  <footer>
+    Powered by <a href="/">UTtag</a> · 此頁面可安全分享 · 每 30 秒自動刷新
+  </footer>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const id = params.get("id");
+    const label = params.get("label") || "";
+    const orderNo = params.get("orderNo") || "";
+    const sku = params.get("sku") || "";
+    const origin = params.get("origin") || "";
+    const dest = params.get("dest") || "";
+    const deadline = params.get("deadline") || "";
+    const created = params.get("created") || "";
+
+    let map, marker;
+
+    function escapeHtml(s) {
+      return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+    }
+    function timeAgo(iso) {
+      if (!iso) return "—";
+      const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+      if (s < 60)   return s + " 秒前";
+      if (s < 3600) return Math.round(s/60) + " 分鐘前";
+      if (s < 86400) return Math.round(s/3600) + " 小時前";
+      return Math.round(s/86400) + " 天前";
+    }
+    function computeProgress() {
+      if (!created || !deadline) return null;
+      const c = new Date(created).getTime();
+      const d = new Date(deadline).getTime();
+      const now = Date.now();
+      if (now >= d) return { pct: 95, overdue: true, label: "逾期 " + Math.round((now - d) / 60000) + " 分鐘" };
+      if (d <= c) return null;
+      const pct = Math.max(1, Math.min(99, Math.round(((now - c) / (d - c)) * 100)));
+      const remainMin = Math.round((d - now) / 60000);
+      const r = remainMin >= 60 ? "剩 " + Math.round(remainMin/60) + " 小時" : "剩 " + remainMin + " 分鐘";
+      return { pct, overdue: false, label: r };
+    }
+
+    async function render() {
+      if (!id) {
+        document.getElementById("app").innerHTML = '<div class="error">連結無效：缺少追蹤 ID</div>';
+        return;
+      }
+      try {
+        const r = await fetch("/api/public/track?id=" + encodeURIComponent(id));
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.error || "HTTP " + r.status);
+        }
+        const data = await r.json();
+        draw(data);
+      } catch (e) {
+        document.getElementById("app").innerHTML = '<div class="error">無法載入：' + escapeHtml(e.message) + '</div>';
+      }
+    }
+
+    function draw(d) {
+      const latest = d.latest || {};
+      const online = latest.updatedAt && (Date.now() - new Date(latest.updatedAt).getTime()) < 3600000;
+      const statusClass = latest.status === "sos" ? "alert" : online ? "" : "offline";
+      const statusText = latest.status === "sos" ? "需要協助 (SOS)" : online ? "運送中" : "暫未回報";
+      const prog = computeProgress();
+
+      const rows = [];
+      if (orderNo) rows.push(["訂單號", orderNo, "mono"]);
+      if (sku) rows.push(["品項", sku]);
+      if (origin) rows.push(["出貨地", origin]);
+      if (dest) rows.push(["目的地", dest]);
+      rows.push(["裝置 ID", d.mac, "mono"]);
+      if (latest.battery != null) rows.push(["裝置電量", latest.battery + " %"]);
+      if (latest.updatedAt) rows.push(["最後更新", timeAgo(latest.updatedAt)]);
+
+      document.getElementById("app").innerHTML = `
+        <div class="card">
+          <div class="card-body">
+            <div class="status-row">
+              <span class="status-dot ${statusClass}"></span>
+              <div>
+                <div class="status-text">${statusText}</div>
+                <div class="status-sub">${label || "包裹追蹤"}</div>
+              </div>
+            </div>
+            ${prog ? `
+              <div class="progress">
+                <div class="progress-label">
+                  <span>配送進度</span>
+                  <span style="color:${prog.overdue ? '#dc2626' : '#e01e5a'};font-weight:600;">${prog.pct}% · ${prog.label}</span>
+                </div>
+                <div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100, prog.pct)}%;${prog.overdue ? 'background:#dc2626;' : ''}"></div></div>
+              </div>
+            ` : ""}
+          </div>
+        </div>
+
+        <div class="card">
+          <div id="map"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">貨件資訊</div>
+          <div class="card-body" style="padding-top:0;padding-bottom:4px;">
+            ${rows.map(([k,v,cls]) => `<div class="row"><span class="k">${k}</span><span class="v ${cls || ''}">${escapeHtml(v)}</span></div>`).join("")}
+          </div>
+        </div>
+      `;
+
+      if (latest.lat != null && latest.lng != null) {
+        if (!map) {
+          map = L.map("map", { zoomControl: true, attributionControl: false }).setView([latest.lat, latest.lng], 14);
+          L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
+        }
+        if (marker) marker.setLatLng([latest.lat, latest.lng]);
+        else marker = L.marker([latest.lat, latest.lng]).addTo(map);
+        map.setView([latest.lat, latest.lng], 14);
+      }
+    }
+
+    render();
+    setInterval(render, 30000);
+  </script>
+</body>
+</html>

@@ -12,6 +12,10 @@
       "destination": "/api/ai/:path*"
     },
     {
+      "source": "/api/public/:path*",
+      "destination": "/api/public/:path*"
+    },
+    {
       "source": "/api/:path*",
       "destination": "https://uttag-api.onrender.com/api/:path*"
     }
