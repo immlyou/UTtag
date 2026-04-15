@@ -31,7 +31,8 @@ app.use((req, res, next) => {
   res.status(404).send("Not found");
 });
 
-app.use(express.static(path.join(__dirname)));
+// redirect:false → 不要對目錄自動加尾斜線，避免跟 Vercel trailingSlash:false 撞成 redirect loop
+app.use(express.static(path.join(__dirname), { redirect: false }));
 
 // Parse JSON for local API routes
 app.use(express.json());

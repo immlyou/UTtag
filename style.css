@@ -2393,15 +2393,15 @@ button { cursor: pointer; border: none; font-weight: 600; transition: all 0.2s; 
   z-index: 1;
   background: var(--bg-sidebar, #1f2937);
   color: var(--text, #e5e7eb);
-  border: 1px solid var(--border, rgba(255,255,255,.1));
+  border: 2px solid var(--accent, #e01e5a);
   border-radius: var(--radius, 10px);
   width: 90%;
   max-width: 500px;
   max-height: 85vh;
   overflow-y: auto;
-  box-shadow: var(--shadow, 0 20px 60px rgba(0,0,0,.5));
+  box-shadow: 0 25px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.1), 0 0 40px rgba(224,30,90,.25);
   animation: modalIn 0.2s ease-out;
-  /* 確保在 MOMO/深色模式下都是實心、不被父層 opacity 繼承 */
+  /* 確保在任何主題下都清楚可見 */
   opacity: 1 !important;
   visibility: visible !important;
 }
