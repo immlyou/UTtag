@@ -99,6 +99,8 @@ let historyMarkers = [];
 let autoRefreshTimer = null;
 let autoRefreshCountdown = 0;
 let tagAliases = JSON.parse(localStorage.getItem("utfind_aliases") || "{}");
+// 棧板/貨件 metadata：{mac: {orderNo, sku, destination, origin, weight}}
+let tagMeta = JSON.parse(localStorage.getItem("utfind_tag_meta") || "{}");
 let currentLayer = null;
 let currentFilter = "all";
 let tagTypeFilter = localStorage.getItem("utfind_tag_type_filter") || "all"; // "all" | "real" | "b2b"
@@ -1968,12 +1970,43 @@ function showTagDetail(mac) {
   const tempSpark = generateSparklineSVG(tempHistory[mac] || [], TEMP_MIN, TEMP_MAX, tempAlert ? "#ef4444" : "#a855f7");
   const batSpark = generateSparklineSVG(batHistory[mac] || [], 0, 100, "#3b82f6");
 
+  const meta = tagMeta[mac] || {};
+  const progress = computeDeliveryProgress(mac);
+  const metaHtml = (meta.orderNo || meta.sku || meta.destination || meta.origin) ? `
+    <div class="detail-location" style="background:linear-gradient(135deg,rgba(59,130,246,.06),rgba(168,85,247,.04));margin-top:10px;">
+      <p style="margin-bottom:6px;"><b>📦 棧板資訊</b>
+        <button class="btn-ghost-sm" onclick="editTagMeta('${mac}')" style="float:right;font-size:10px;padding:2px 8px;">編輯</button></p>
+      ${meta.orderNo ? `<p style="font-size:12px;"><span style="color:var(--text-muted);">訂單號</span> <span class="mono">${meta.orderNo}</span></p>` : ""}
+      ${meta.sku ? `<p style="font-size:12px;"><span style="color:var(--text-muted);">品項</span> ${meta.sku}</p>` : ""}
+      ${meta.weight ? `<p style="font-size:12px;"><span style="color:var(--text-muted);">重量</span> ${meta.weight}</p>` : ""}
+      ${meta.origin ? `<p style="font-size:12px;"><span style="color:var(--text-muted);">出貨</span> ${meta.origin}</p>` : ""}
+      ${meta.destination ? `<p style="font-size:12px;"><span style="color:var(--text-muted);">目的地</span> ${meta.destination}</p>` : ""}
+      ${progress ? `
+        <div style="margin-top:8px;">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:3px;">
+            <span>配送進度</span>
+            <span style="color:${progress.pct >= 100 ? "var(--success)" : progress.overdue ? "var(--danger)" : "var(--accent)"};font-weight:600;">
+              ${progress.pct}% ${progress.label}
+            </span>
+          </div>
+          <div style="background:var(--border);border-radius:4px;height:6px;overflow:hidden;">
+            <div style="background:${progress.pct >= 100 ? "var(--success)" : progress.overdue ? "var(--danger)" : "var(--accent)"};height:100%;width:${Math.min(100, progress.pct)}%;transition:width .3s;"></div>
+          </div>
+        </div>` : ""}
+    </div>
+  ` : `
+    <div style="text-align:center;padding:8px 0;margin-top:10px;">
+      <button class="btn-ghost-sm" onclick="editTagMeta('${mac}')" style="font-size:11px;">+ 新增棧板資訊 (訂單號/品項)</button>
+    </div>
+  `;
+
   document.getElementById("detail-content").innerHTML = `
     <div class="detail-header">
       <div class="detail-mac">${mac}</div>
       ${alias ? `<div class="detail-alias">${alias}</div>` : ""}
       <div class="detail-status-badge ${statusClass}">${statusText}</div>
     </div>
+    ${metaHtml}
     <div class="detail-grid">
       <div class="detail-stat">
         <div class="detail-stat-value" style="color:${tempAlert ? "var(--danger)" : "var(--purple)"}">${temp}${typeof temp === "number" ? "°C" : ""}</div>
@@ -2008,6 +2041,53 @@ function showTagDetail(mac) {
   `;
 
   switchPanel("detail");
+}
+
+// ---------- 棧板 Metadata 編輯 + 配送進度計算 ----------
+function editTagMeta(mac) {
+  const cur = tagMeta[mac] || {};
+  const orderNo = prompt("訂單號 (例: MO-2026-00123)", cur.orderNo || "");
+  if (orderNo === null) return;
+  const sku = prompt("品項 / SKU", cur.sku || "");
+  if (sku === null) return;
+  const weight = prompt("重量 / 數量", cur.weight || "");
+  if (weight === null) return;
+  const origin = prompt("出貨地 (例: MOMO林口物流中心)", cur.origin || "");
+  if (origin === null) return;
+  const destination = prompt("目的地", cur.destination || "");
+  if (destination === null) return;
+
+  tagMeta[mac] = { orderNo: orderNo.trim(), sku: sku.trim(), weight: weight.trim(), origin: origin.trim(), destination: destination.trim() };
+  if (!tagMeta[mac].orderNo && !tagMeta[mac].sku) delete tagMeta[mac];
+  localStorage.setItem("utfind_tag_meta", JSON.stringify(tagMeta));
+  showTagDetail(mac);
+  showToast("棧板資訊已更新", "success");
+}
+
+function computeDeliveryProgress(mac) {
+  // 優先找這顆 Tag 目前的任務
+  const task = (typeof tasks !== "undefined" ? tasks : []).find(t => t.mac === mac && t.status === "active");
+  if (!task) return null;
+
+  const now = Date.now();
+  const created = new Date(task.createdAt || now).getTime();
+  const deadline = new Date(task.deadline || now).getTime();
+  const total = deadline - created;
+
+  // 任務已經標記完成
+  if (task.status === "done") return { pct: 100, label: "已送達", overdue: false };
+
+  // 已逾期
+  if (now > deadline) {
+    const overMin = Math.round((now - deadline) / 60000);
+    return { pct: 95, label: `逾期 ${overMin} 分鐘`, overdue: true };
+  }
+
+  if (total <= 0) return { pct: 50, label: "運送中", overdue: false };
+  const pct = Math.max(1, Math.min(99, Math.round(((now - created) / total) * 100)));
+  const remainMin = Math.round((deadline - now) / 60000);
+  const remainLabel = remainMin >= 60 ? `剩 ${Math.round(remainMin / 60)} 小時` : `剩 ${remainMin} 分鐘`;
+  return { pct, label: remainLabel, overdue: false };
 }
 
 function generateSparklineSVG(data, min, max, color) {
@@ -4940,6 +5020,34 @@ function injectDemoData() {
     localStorage.setItem("utfind_aliases", JSON.stringify(tagAliases));
   }
 
+  // 棧板 Metadata (MOMO 示範)：前 8 顆 Tag 塞入擬真的訂單/品項
+  const momoSamples = [
+    { alias: "MOMO-棧板 #MP-2026-00123", meta: { orderNo: "MO-2026-00123", sku: "Dyson V15 無線吸塵器 × 6 台", weight: "18.4 kg", origin: "MOMO 林口物流中心", destination: "新北市板橋區文化路一段 266 號" } },
+    { alias: "MOMO-棧板 #MP-2026-00124", meta: { orderNo: "MO-2026-00124", sku: "生鮮冷凍-智利鮭魚切片 500g × 40", weight: "25.0 kg", origin: "MOMO 台中冷鏈倉", destination: "台中市西屯區台灣大道三段 301 號" } },
+    { alias: "MOMO-棧板 #MP-2026-00125", meta: { orderNo: "MO-2026-00125", sku: "尿布 好奇 L 號 × 24 包", weight: "36.8 kg", origin: "MOMO 桃園自動倉", destination: "高雄市三民區博愛一路 366 號" } },
+    { alias: "MOMO-棧板 #MP-2026-00126", meta: { orderNo: "MO-2026-00126", sku: "iPhone 17 Pro × 15 (易碎)", weight: "4.2 kg", origin: "MOMO 內湖 HQ 倉", destination: "台北市信義區松壽路 12 號" } },
+    { alias: "MOMO-棧板 #MP-2026-00127", meta: { orderNo: "MO-2026-00127", sku: "嬌生嬰兒油 × 60 / 奶粉 × 24", weight: "28.5 kg", origin: "MOMO 林口物流中心", destination: "台南市東區中華東路三段 8 號" } },
+    { alias: "MOMO-棧板 #MP-2026-00128", meta: { orderNo: "MO-2026-00128", sku: "生鮮蔬菜禮盒 × 15", weight: "12.0 kg", origin: "MOMO 台中冷鏈倉", destination: "嘉義市西區世賢路二段 176 號" } },
+    { alias: "MOMO-棧板 #MP-2026-00129", meta: { orderNo: "MO-2026-00129", sku: "樂高 Technic 系列 × 8", weight: "14.6 kg", origin: "MOMO 桃園自動倉", destination: "新竹市東區光復路二段 295 號" } },
+    { alias: "MOMO-棧板 #MP-2026-00130", meta: { orderNo: "MO-2026-00130", sku: "NUK 奶瓶禮盒 × 20", weight: "8.8 kg", origin: "MOMO 林口物流中心", destination: "宜蘭縣宜蘭市民權路二段 38 號" } },
+  ];
+  let metaDirty = false;
+  demoMacs.slice(0, momoSamples.length).forEach((mac, idx) => {
+    const s = momoSamples[idx];
+    if (!tagAliases[mac] || /^(Tag-|TAG-|C2:|D6:|D9:|E[0-9A-F]:|F[0-9A-F]:)/.test(tagAliases[mac])) {
+      tagAliases[mac] = s.alias;
+      metaDirty = true;
+    }
+    if (!tagMeta[mac]) {
+      tagMeta[mac] = s.meta;
+      metaDirty = true;
+    }
+  });
+  if (metaDirty) {
+    localStorage.setItem("utfind_aliases", JSON.stringify(tagAliases));
+    localStorage.setItem("utfind_tag_meta", JSON.stringify(tagMeta));
+  }
+
   // Tag 分組
   if (tagGroups.length === 0) {
     tagGroups = [
@@ -4950,12 +5058,17 @@ function injectDemoData() {
     localStorage.setItem("utfind_groups", JSON.stringify(tagGroups));
   }
 
-  // 任務指派
+  // 任務指派（配合 MOMO 示範棧板）
   if (tasks.length === 0) {
+    const m3 = demoMacs[2] || mac1;
+    const m4 = demoMacs[3] || mac1;
+    const m6 = demoMacs[5] || mac2;
     tasks = [
-      { id: "t1", name: "疫苗配送-台北榮總", mac: mac1, deadline: new Date(Date.now() + 3600000 * 4).toISOString(), status: "active", createdAt: new Date(now - 3600000 * 2).toISOString() },
-      { id: "t2", name: "冷凍品配送-台中門市", mac: mac2, deadline: new Date(Date.now() - 3600000 * 1).toISOString(), status: "active", createdAt: new Date(now - 3600000 * 10).toISOString() },
-      { id: "t3", name: "籠車回收-新莊倉庫", mac: mac1, deadline: new Date(Date.now() + 86400000).toISOString(), status: "done", createdAt: new Date(now - 86400000).toISOString() },
+      { id: "t1", name: "MP-00123 → 板橋門市", shipmentNo: "MO-2026-00123", mac: mac1, deadline: new Date(now + 3600000 * 2).toISOString(), status: "active", createdAt: new Date(now - 3600000 * 3).toISOString() },
+      { id: "t2", name: "MP-00124 冷鏈 → 台中門市", shipmentNo: "MO-2026-00124", mac: mac2, deadline: new Date(now - 1800000).toISOString(), status: "active", createdAt: new Date(now - 3600000 * 8).toISOString() },
+      { id: "t3", name: "MP-00125 → 高雄三民", shipmentNo: "MO-2026-00125", mac: m3, deadline: new Date(now + 3600000 * 6).toISOString(), status: "active", createdAt: new Date(now - 1800000).toISOString() },
+      { id: "t4", name: "MP-00126 易碎 → 信義松壽", shipmentNo: "MO-2026-00126", mac: m4, deadline: new Date(now + 3600000 * 1).toISOString(), status: "active", createdAt: new Date(now - 3600000 * 1.2).toISOString() },
+      { id: "t5", name: "MP-00128 → 嘉義西區", shipmentNo: "MO-2026-00128", mac: m6, deadline: new Date(now + 86400000).toISOString(), status: "done", createdAt: new Date(now - 86400000).toISOString() },
     ];
     localStorage.setItem("utfind_tasks", JSON.stringify(tasks));
   }
