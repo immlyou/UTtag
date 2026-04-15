@@ -2385,10 +2385,12 @@ button { cursor: pointer; border: none; font-weight: 600; transition: all 0.2s; 
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(4px);
+  z-index: 0;
 }
 
 .modal-content {
   position: relative;
+  z-index: 1;
   background: var(--bg-sidebar);
   border: 1px solid var(--border);
   border-radius: var(--radius);
