@@ -8,6 +8,10 @@
       "destination": "https://api.utfind.uttec.com.tw/api/v1/tags/:path*"
     },
     {
+      "source": "/api/ai/:path*",
+      "destination": "/api/ai/:path*"
+    },
+    {
       "source": "/api/:path*",
       "destination": "https://uttag-api.onrender.com/api/:path*"
     }
