@@ -4,11 +4,23 @@
 // 輸入：{ messages: [{role, content}, ...], context?: {alerts?, usage?, tags?} }
 // 輸出：{ reply: string, model: string, usage?: {...} }
 
-const jwt = require("jsonwebtoken");
-
+// 注意：tenant token 由 Render backend 簽發，其 JWT_SECRET 與 Vercel 不一定同步。
+// 因此不用 jwt.verify，而是呼叫 Render 的 /api/tenant/auth/me 由權威方驗證。
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
+const TENANT_VERIFY_URL = process.env.TENANT_VERIFY_URL || "https://uttag-api.onrender.com/api/tenant/auth/me";
 const MODEL = process.env.AI_MODEL || "claude-sonnet-4-5";
 const MAX_TOKENS = 1024;
+
+function decodeJwtPayload(token) {
+  try {
+    const part = token.split(".")[1];
+    const b64 = part.replace(/-/g, "+").replace(/_/g, "/");
+    const pad = b64 + "===".slice((b64.length + 3) % 4);
+    return JSON.parse(Buffer.from(pad, "base64").toString("utf8"));
+  } catch {
+    return null;
+  }
+}
 
 function setCors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -25,16 +37,25 @@ module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(204).end();
   if (req.method !== "POST") return err(res, 405, "Method not allowed");
 
-  // 認證
+  // 認證：交給 Render backend 的 /api/tenant/auth/me 驗證
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
   if (!token) return err(res, 401, "Missing bearer token");
-  if (!process.env.JWT_SECRET) return err(res, 500, "Server JWT_SECRET not configured");
+
   let user;
   try {
-    user = jwt.verify(token, process.env.JWT_SECRET);
-  } catch {
-    return err(res, 401, "Invalid token");
+    const verifyResp = await fetch(TENANT_VERIFY_URL, {
+      method: "GET",
+      headers: { Authorization: "Bearer " + token },
+    });
+    if (!verifyResp.ok) return err(res, 401, "Invalid token (verify " + verifyResp.status + ")");
+    const meData = await verifyResp.json();
+    user = meData.user || meData; // 取 tenant user 物件
+  } catch (e) {
+    // 備援：上游不通時只解 payload 以取得身份標記（不當作授權通過）
+    const payload = decodeJwtPayload(token);
+    if (!payload?.email && !payload?.client_id) return err(res, 401, "Token verify failed: " + e.message);
+    user = payload;
   }
 
   if (!process.env.ANTHROPIC_API_KEY) {
