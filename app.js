@@ -804,6 +804,13 @@ function updateDashboard() {
   animateValue("dash-online", online);
   animateValue("dash-temp", tempAlert);
 
+  // 物流任務 KPI
+  updateDashboardTaskKPI();
+
+  // 展示 demo 按鈕（有任務時顯示）
+  const demoSection = document.getElementById("demo-arrival-section");
+  if (demoSection) demoSection.style.display = tasks.length ? "" : "none";
+
   // 記錄 sparkline 資料
   latestData.forEach((tag) => {
     if (!tempHistory[tag.mac]) tempHistory[tag.mac] = [];
@@ -3154,6 +3161,7 @@ function checkTaskArrivals() {
       pushAlert("🎯", `${task.name}${task.shipmentNo ? ` (${task.shipmentNo})` : ""} 已抵達「${gf.name}」`, "success");
       showToast(`任務「${task.name}」已抵達目的地`, "success");
       addEvent("info", `任務「${task.name}」已抵達 ${gf.name}`);
+      showArrivalCelebration(task);
 
       triggerWebhook("arrival", {
         taskId: task.id,
@@ -3170,6 +3178,75 @@ function checkTaskArrivals() {
     }
   });
   if (updated) localStorage.setItem("utfind_tasks", JSON.stringify(tasks));
+}
+
+/**
+ * Update dashboard task KPI cards
+ */
+function updateDashboardTaskKPI() {
+  const active = tasks.filter(t => t.status === "active").length;
+  const done = tasks.filter(t => t.status === "done").length;
+  const overdue = tasks.filter(t => {
+    if (t.status !== "active" || !t.deadline) return false;
+    return Date.now() > new Date(t.deadline).getTime();
+  }).length;
+
+  const elActive = document.getElementById("dash-tasks-active");
+  const elStatus = document.getElementById("dash-tasks-status");
+  if (elActive) elActive.textContent = active;
+  if (elStatus) elStatus.textContent = `${overdue} / ${done}`;
+}
+
+/**
+ * Show arrival celebration overlay
+ */
+function showArrivalCelebration(task) {
+  const el = document.getElementById("arrival-celebration");
+  if (!el) return;
+
+  const nameEl = document.getElementById("arrival-task-name");
+  const detailEl = document.getElementById("arrival-task-detail");
+
+  nameEl.textContent = task.name + (task.shipmentNo ? ` (${task.shipmentNo})` : "");
+
+  const meta = tagMeta[task.mac];
+  detailEl.textContent = meta
+    ? `${meta.sku || ""} → ${meta.destination || ""}`
+    : "";
+
+  el.classList.remove("hidden", "fade-out");
+
+  setTimeout(() => {
+    el.classList.add("fade-out");
+    setTimeout(() => el.classList.add("hidden"), 500);
+  }, 3000);
+}
+
+/**
+ * Demo: simulate a pallet arrival for presentation
+ */
+function demoArrival() {
+  const activeTask = tasks.find(t => t.status === "active" && !t.arrivalNotified);
+  if (!activeTask) {
+    showToast("沒有進行中的任務可以模擬", "warning");
+    return;
+  }
+
+  activeTask.arrivedAt = new Date().toISOString();
+  activeTask.arrivalNotified = true;
+  localStorage.setItem("utfind_tasks", JSON.stringify(tasks));
+
+  const alias = tagAliases[activeTask.mac] || activeTask.mac;
+  const gf = geofences.find(g => g.id === activeTask.destinationGeofenceId);
+  const gfName = gf ? gf.name : "目的地";
+
+  pushAlert("🎯", `${activeTask.name}${activeTask.shipmentNo ? ` (${activeTask.shipmentNo})` : ""} 已抵達「${gfName}」`, "success");
+  showToast(`任務「${activeTask.name}」已抵達目的地`, "success");
+  addEvent("info", `任務「${activeTask.name}」已抵達 ${gfName}`);
+  showArrivalCelebration(activeTask);
+
+  renderTaskList();
+  updateDashboardTaskKPI();
 }
 
 function completeTask(id) {

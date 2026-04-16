@@ -130,6 +130,22 @@
           <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 1H7c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-2zm0 18H7V5h10v14z"/></svg></div>
           <div class="kpi-data"><div class="kpi-value" id="dash-total">0</div><div class="kpi-label" data-i18n="total">裝置總數</div></div>
         </div>
+        <div class="kpi-card kpi-green">
+          <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM6 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-9l1.96 2.5H17V9.5h2.5zm-1.5 9c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg></div>
+          <div class="kpi-data"><div class="kpi-value" id="dash-tasks-active">0</div><div class="kpi-label">配送中</div></div>
+        </div>
+        <div class="kpi-card kpi-orange">
+          <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg></div>
+          <div class="kpi-data"><div class="kpi-value" id="dash-tasks-status">0 / 0</div><div class="kpi-label">逾期 / 已完成</div></div>
+        </div>
+      </div>
+
+      <!-- 模擬到站 Demo 按鈕 -->
+      <div class="info-card" id="demo-arrival-section" style="display:none;">
+        <div class="info-card-header"><span>展示工具</span></div>
+        <div class="info-card-body" style="text-align:center;">
+          <button class="btn-accent" onclick="demoArrival()" style="width:100%;padding:10px;font-size:13px;">🎯 模擬棧板到站</button>
+        </div>
       </div>
 
       <div class="info-card" id="plan-section" style="display:none;">
@@ -1255,6 +1271,16 @@
         <input id="ai-input" type="text" placeholder="例：哪台車最常溫度異常？" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font:inherit;font-size:13px;background:var(--card-bg,#fff);color:var(--text);" autocomplete="off" />
         <button id="ai-send" style="background:var(--accent,#3b82f6);color:#fff;border:none;padding:0 14px;border-radius:6px;cursor:pointer;font:inherit;font-size:13px;">送出</button>
       </form>
+    </div>
+  </div>
+  <!-- Arrival Celebration Overlay -->
+  <div id="arrival-celebration" class="arrival-celebration hidden">
+    <div class="arrival-celebration-card">
+      <div class="arrival-icon">🎯</div>
+      <div class="arrival-title">棧板已抵達！</div>
+      <div class="arrival-name" id="arrival-task-name"></div>
+      <div class="arrival-detail" id="arrival-task-detail"></div>
+      <div class="arrival-badge">✅ 配送完成</div>
     </div>
   </div>
 </body>
