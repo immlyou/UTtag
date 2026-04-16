@@ -110,31 +110,31 @@
 
       <!-- KPI -->
       <div class="kpi-grid" id="kpi-grid" style="display:none;">
-        <div class="kpi-card kpi-blue">
+        <div class="kpi-card kpi-blue kpi-clickable" onclick="switchPanel('tags')">
           <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg></div>
           <div class="kpi-data"><div class="kpi-value" id="dash-online">0</div><div class="kpi-label" data-i18n="online">在線裝置</div></div>
         </div>
-        <div class="kpi-card kpi-red">
+        <div class="kpi-card kpi-red kpi-clickable" onclick="switchPanel('events')">
           <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg></div>
           <div class="kpi-data"><div class="kpi-value" id="dash-sos">0</div><div class="kpi-label">SOS</div></div>
         </div>
-        <div class="kpi-card kpi-amber">
+        <div class="kpi-card kpi-amber kpi-clickable" onclick="switchPanel('tags')">
           <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.67 4H14V2h-4v2H8.33C7.6 4 7 4.6 7 5.33v15.34C7 21.4 7.6 22 8.33 22h7.34c.73 0 1.33-.6 1.33-1.33V5.33C17 4.6 16.4 4 15.67 4z"/></svg></div>
           <div class="kpi-data"><div class="kpi-value" id="dash-lowbat">0</div><div class="kpi-label" data-i18n="lowbat">低電量</div></div>
         </div>
-        <div class="kpi-card kpi-purple">
+        <div class="kpi-card kpi-purple kpi-clickable" onclick="switchPanel('coldchain')">
           <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 13V5c0-1.66-1.34-3-3-3S9 3.34 9 5v8c-1.21.91-2 2.37-2 4 0 2.76 2.24 5 5 5s5-2.24 5-5c0-1.63-.79-3.09-2-4z"/></svg></div>
           <div class="kpi-data"><div class="kpi-value" id="dash-temp">0</div><div class="kpi-label" data-i18n="tempAlert">溫度異常</div></div>
         </div>
-        <div class="kpi-card kpi-cyan kpi-wide">
+        <div class="kpi-card kpi-cyan kpi-wide kpi-clickable" onclick="switchPanel('tags')">
           <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 1H7c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-2zm0 18H7V5h10v14z"/></svg></div>
           <div class="kpi-data"><div class="kpi-value" id="dash-total">0</div><div class="kpi-label" data-i18n="total">裝置總數</div></div>
         </div>
-        <div class="kpi-card kpi-green">
+        <div class="kpi-card kpi-green kpi-clickable" onclick="switchPanel('logistics')">
           <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM6 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-9l1.96 2.5H17V9.5h2.5zm-1.5 9c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg></div>
           <div class="kpi-data"><div class="kpi-value" id="dash-tasks-active">0</div><div class="kpi-label">配送中</div></div>
         </div>
-        <div class="kpi-card kpi-orange">
+        <div class="kpi-card kpi-orange kpi-clickable" onclick="switchPanel('logistics')">
           <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg></div>
           <div class="kpi-data"><div class="kpi-value" id="dash-tasks-status">0 / 0</div><div class="kpi-label">逾期 / 已完成</div></div>
         </div>

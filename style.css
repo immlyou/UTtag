@@ -319,6 +319,10 @@ body {
 .kpi-cyan .kpi-icon { background: rgba(6,182,212,0.15); color: #06b6d4; }
 .kpi-cyan .kpi-value { color: #06b6d4; }
 
+.kpi-clickable { cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; }
+.kpi-clickable:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+.kpi-clickable:active { transform: translateY(0); }
+
 .kpi-green { background: rgba(34,197,94,0.08); border-color: rgba(34,197,94,0.2); }
 .kpi-green .kpi-icon { background: rgba(34,197,94,0.15); color: #22c55e; }
 .kpi-green .kpi-value { color: #22c55e; }
