@@ -25,6 +25,39 @@
     <div id="alert-panel-list" class="alert-panel-list"></div>
   </div>
 
+  <!-- 手機 Header -->
+  <header id="mobile-header" class="mobile-header">
+    <button class="mobile-hamburger" onclick="toggleMobileDrawer()">☰</button>
+    <span class="mobile-logo">UTtag</span>
+    <button class="mobile-hamburger" onclick="toggleNotifSound()" id="mobile-sound">🔔</button>
+  </header>
+
+  <!-- 手機抽屜導航 -->
+  <div id="mobile-drawer-overlay" class="mobile-drawer-overlay hidden" onclick="toggleMobileDrawer()"></div>
+  <nav id="mobile-drawer" class="mobile-drawer">
+    <div class="mobile-drawer-header">
+      <span class="mobile-drawer-logo">UT</span>
+      <span class="mobile-drawer-title">UTtag</span>
+      <button class="mobile-drawer-close" onclick="toggleMobileDrawer()">&times;</button>
+    </div>
+    <div class="mobile-drawer-items">
+      <button class="mobile-nav-item active" onclick="switchPanel('dashboard')" data-panel="dashboard">📊 總覽</button>
+      <button class="mobile-nav-item" onclick="switchPanel('tags')" data-panel="tags">📱 裝置</button>
+      <button class="mobile-nav-item" onclick="switchPanel('history')" data-panel="history">🕐 軌跡</button>
+      <button class="mobile-nav-item" onclick="switchPanel('geofence')" data-panel="geofence">📍 圍欄</button>
+      <button class="mobile-nav-item" onclick="switchPanel('events')" data-panel="events">📋 事件</button>
+      <button class="mobile-nav-item" onclick="switchPanel('reports')" data-panel="reports">📊 報表</button>
+      <button class="mobile-nav-item" onclick="switchPanel('groups')" data-panel="groups">👥 群組</button>
+      <button class="mobile-nav-item" onclick="switchPanel('coldchain')" data-panel="coldchain" data-industry-not="biomedical">❄️ 冷鏈</button>
+      <button class="mobile-nav-item" onclick="switchPanel('logistics')" data-panel="logistics" data-industry-not="biomedical">🚛 物流</button>
+      <button class="mobile-nav-item" onclick="switchPanel('settings')" data-panel="settings">⚙️ 設定</button>
+    </div>
+    <div class="mobile-drawer-bottom">
+      <button class="mobile-nav-util" onclick="toggleLang()">🌐 語言</button>
+      <button class="mobile-nav-util" onclick="toggleDarkMode()">🌙 主題</button>
+    </div>
+  </nav>
+
   <!-- 左側導航 -->
   <nav id="nav-rail">
     <div class="nav-logo">UT</div>

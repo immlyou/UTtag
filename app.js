@@ -1386,9 +1386,42 @@ function switchPanel(name) {
   if (panel) panel.classList.add("active");
   if (nav) nav.classList.add("active");
 
+  // Update mobile drawer active state
+  document.querySelectorAll(".mobile-nav-item").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.panel === name);
+  });
+
+  // Auto-close mobile drawer
+  closeMobileDrawer();
+
   // Initialize admin panel if switching to it
   if (name === "admin" && typeof initAdminPanel === "function") {
     initAdminPanel();
+  }
+}
+
+function toggleMobileDrawer() {
+  const drawer = document.getElementById("mobile-drawer");
+  const overlay = document.getElementById("mobile-drawer-overlay");
+  if (!drawer) return;
+  const isOpen = drawer.classList.contains("open");
+  if (isOpen) {
+    closeMobileDrawer();
+  } else {
+    drawer.classList.add("open");
+    overlay.classList.add("open");
+    overlay.classList.remove("hidden");
+  }
+}
+
+function closeMobileDrawer() {
+  const drawer = document.getElementById("mobile-drawer");
+  const overlay = document.getElementById("mobile-drawer-overlay");
+  if (!drawer) return;
+  drawer.classList.remove("open");
+  if (overlay) {
+    overlay.classList.remove("open");
+    setTimeout(() => overlay.classList.add("hidden"), 250);
   }
 }
 
