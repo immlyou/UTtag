@@ -3238,7 +3238,7 @@ button { cursor: pointer; border: none; font-weight: 600; transition: all 0.2s; 
 .mobile-header {
   display: none;
   position: fixed;
-  top: 0; left: 0; right: 0;
+  top: var(--demo-banner-offset, 0px); left: 0; right: 0;
   height: 48px;
   background: var(--bg-sidebar);
   border-bottom: 1px solid var(--border);
@@ -3271,7 +3271,7 @@ button { cursor: pointer; border: none; font-weight: 600; transition: all 0.2s; 
 
 .mobile-drawer {
   position: fixed;
-  top: 0; left: 0; bottom: 0;
+  top: var(--demo-banner-offset, 0px); left: 0; bottom: 0;
   width: 260px;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
@@ -3349,7 +3349,7 @@ button { cursor: pointer; border: none; font-weight: 600; transition: all 0.2s; 
   .mobile-drawer { display: flex; }
 
   #nav-rail { display: none; }
-  body { flex-direction: column; padding-top: 48px; }
+  body { flex-direction: column; padding-top: calc(48px + var(--demo-banner-offset, 0px)); }
   #sidebar { width: 100%; min-width: auto; max-height: 45vh; border-right: none; border-bottom: 1px solid var(--border); }
   #map { height: 55vh; }
 

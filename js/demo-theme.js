@@ -79,17 +79,26 @@
         ' <a href="?demo=off" style="color:#fff;opacity:.7;margin-left:12px;font-size:11px;text-decoration:underline;">切回原版</a>';
       document.body.appendChild(bar);
 
-      // 把 body 與 sidebar/tenant banner 往下讓位
+      // 把所有 fixed 元素往下讓位給 demo banner
       const offset = 28;
       document.documentElement.style.setProperty("--demo-banner-offset", offset + "px");
       document.body.style.paddingTop = offset + "px";
-      // sidebar 固定在 top:0，需要往下推
+      // nav-rail
       const rail = document.getElementById("nav-rail");
       if (rail) { rail.style.top = offset + "px"; rail.style.height = "calc(100vh - " + offset + "px)"; }
-      // 右上 tenant 徽章
+      // mobile header
+      const mobileHeader = document.getElementById("mobile-header");
+      if (mobileHeader) mobileHeader.style.top = offset + "px";
+      // mobile drawer
+      const mobileDrawer = document.getElementById("mobile-drawer");
+      if (mobileDrawer) mobileDrawer.style.top = offset + "px";
+      // sidebar
+      const sidebar = document.getElementById("sidebar");
+      if (sidebar) sidebar.style.marginTop = "0";
+      // tenant banner
       const tbar = document.getElementById("uttag-tenant-banner");
       if (tbar) tbar.style.top = offset + "px";
-      // 其他 top:0 的 fixed 元素也挪一下
+      // 其他 top:0 的 fixed 元素
       setTimeout(() => {
         document.querySelectorAll("#uttag-tenant-banner, .uttag-banner").forEach(b => {
           if (getComputedStyle(b).top === "0px") b.style.top = offset + "px";
