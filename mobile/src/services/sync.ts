@@ -6,6 +6,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import { mobileApi } from './api';
+import type { TaskPayload } from '../types/task';
 
 // Storage keys
 const STORAGE_KEYS = {
@@ -21,7 +22,7 @@ export interface PendingTaskChange {
   id: string;
   server_id?: string;
   action: 'create' | 'update' | 'delete';
-  data: any;
+  data: TaskPayload;
   created_at: string;
 }
 
@@ -141,7 +142,7 @@ async function clearPendingScans(): Promise<void> {
 /**
  * Save data for offline access
  */
-export async function saveOfflineData(key: 'tags' | 'alerts', data: any[]): Promise<void> {
+export async function saveOfflineData<T>(key: 'tags' | 'alerts', data: T[]): Promise<void> {
   const storageKey = key === 'tags' ? STORAGE_KEYS.OFFLINE_TAGS : STORAGE_KEYS.OFFLINE_ALERTS;
   await AsyncStorage.setItem(storageKey, JSON.stringify(data));
 }
@@ -241,14 +242,15 @@ export async function performSync(): Promise<SyncResult> {
       },
       conflicts: conflicts?.length || 0,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Sync] Error:', error);
+    const message = error instanceof Error ? error.message : 'Sync failed';
     return {
       success: false,
       timestamp: new Date().toISOString(),
       changes: { tags: { created: 0, updated: 0, deleted: 0 }, tasks: { created: 0, updated: 0, deleted: 0 }, alerts: { created: 0 } },
       conflicts: 0,
-      error: error.message || 'Sync failed',
+      error: message,
     };
   } finally {
     syncInProgress = false;

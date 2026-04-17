@@ -6,6 +6,18 @@
 import { create } from 'zustand';
 import { api } from '../services/api';
 
+// Shape of a device object returned by the REST API
+interface DeviceResponse {
+  mac: string;
+  label?: string;
+  latitude?: number;
+  longitude?: number;
+  temperature?: number;
+  humidity?: number;
+  battery?: number;
+  last_seen_at?: string;
+}
+
 export interface Tag {
   mac: string;
   name: string;
@@ -69,7 +81,7 @@ export const useTagStore = create<TagState>((set, get) => ({
       const response = await api.get('/api/tenant/devices');
       const { devices } = response.data;
 
-      const tags: Tag[] = (devices || []).map((device: any) => ({
+      const tags: Tag[] = (devices || []).map((device: DeviceResponse) => ({
         mac: device.mac,
         name: device.label || device.mac,
         label: device.label,
@@ -87,10 +99,10 @@ export const useTagStore = create<TagState>((set, get) => ({
         isLoading: false,
         lastSyncAt: new Date(),
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       set({
         isLoading: false,
-        error: error.message || 'Failed to fetch tags',
+        error: error instanceof Error ? error.message : 'Failed to fetch tags',
       });
       throw error;
     }
@@ -209,7 +221,7 @@ export const useTagStore = create<TagState>((set, get) => ({
 }));
 
 // Helper function to determine tag status
-function getTagStatus(device: any): 'online' | 'offline' | 'alert' {
+function getTagStatus(device: DeviceResponse): 'online' | 'offline' | 'alert' {
   // Check for alerts first
   if (device.temperature !== undefined && device.temperature !== null) {
     const temp = device.temperature;

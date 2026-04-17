@@ -4,6 +4,7 @@
  */
 
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
+import type { TaskPayload } from '../types/task';
 import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
 
@@ -141,7 +142,7 @@ export const mobileApi = {
         id: string;
         server_id?: string;
         action: 'create' | 'update' | 'delete';
-        data: any;
+        data: TaskPayload;
       }>;
       scans?: Array<{
         mac: string;
