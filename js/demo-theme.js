@@ -237,4 +237,29 @@
       applyTheme(active);
     }
   }
+
+  // 設定頁的一鍵切換按鈕
+  function syncToggleButton() {
+    const btn = document.getElementById("btn-momo-demo-toggle");
+    const status = document.getElementById("momo-demo-status");
+    if (!btn) return;
+    const on = localStorage.getItem(LS_KEY) === "momo";
+    btn.textContent = on ? "切回原版（停用 MOMO Demo）" : "載入 MOMO Demo";
+    btn.classList.toggle("btn-accent", !on);
+    btn.classList.toggle("btn-ghost", on);
+    if (status) status.textContent = on ? "目前狀態：MOMO Demo 已啟用" : "目前狀態：原版 UTtag";
+  }
+
+  global.toggleMomoDemo = function () {
+    const on = localStorage.getItem(LS_KEY) === "momo";
+    if (on) localStorage.removeItem(LS_KEY);
+    else localStorage.setItem(LS_KEY, "momo");
+    location.reload();
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", syncToggleButton);
+  } else {
+    syncToggleButton();
+  }
 })(window);
